@@ -6,6 +6,7 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalPerformanceMonitor.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalOutputShaderCache.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalAttachmentsInfo.h"
+#include <cstdint>
 
 struct MetalBufferAllocation
 {
@@ -288,6 +289,15 @@ public:
         return m_currentCommandBuffer.m_commandBuffer;
     }
 
+    MTL::CommandBuffer* GetAndRetainCurrentCommandBufferIfNotCompleted()
+    {
+        // The command buffer has been commited and has finished execution
+        if (m_currentCommandBuffer.m_commited && m_executingCommandBuffers.size() == 0)
+            return nullptr;
+
+        return GetCurrentCommandBuffer()->retain();
+    }
+
     void RequestSoonCommit()
     {
         m_commitTreshold = m_recordedDrawcalls + 8;
@@ -336,6 +346,7 @@ public:
     MTL::BlitCommandEncoder* GetBlitCommandEncoder();
     void EndEncoding();
     void CommitCommandBuffer();
+    void ProcessFinishedCommandBuffers();
 
     bool AcquireDrawable(bool mainWindow);
 
@@ -427,9 +438,13 @@ public:
     void EndOcclusionQuery()
     {
         m_occlusionQuery.m_active = false;
+
+        // Release the old command buffer
         if (m_occlusionQuery.m_lastCommandBuffer)
             m_occlusionQuery.m_lastCommandBuffer->release();
-        m_occlusionQuery.m_lastCommandBuffer = GetCurrentCommandBuffer()->retain();
+
+        // Get and retain the current command buffer
+        m_occlusionQuery.m_lastCommandBuffer = GetAndRetainCurrentCommandBufferIfNotCompleted();
     }
 
 private:
@@ -459,6 +474,10 @@ private:
 	// Void vertex pipelines
 	class MetalVoidVertexPipeline* m_copyBufferToBufferPipeline;
 
+	// Synchronization resources
+	MTL::Event* m_event;
+	int32_t m_eventValue = -1;
+
 	// Resources
 	MTL::SamplerState* m_nearestSampler;
 	MTL::SamplerState* m_linearSampler;
@@ -486,6 +505,7 @@ private:
 
 	// Active objects
 	MetalCommandBuffer m_currentCommandBuffer{};
+	std::vector<MTL::CommandBuffer*> m_executingCommandBuffers;
 	MetalEncoderType m_encoderType = MetalEncoderType::None;
 	MTL::CommandEncoder* m_commandEncoder = nullptr;
 

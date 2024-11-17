@@ -20,12 +20,15 @@
 #include "Cemu/Logging/CemuLogging.h"
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteConst.h"
+#include "HW/Latte/Renderer/Metal/MetalCommon.h"
 #include "config/CemuConfig.h"
 #include "gui/guiWrapper.h"
 
 #define IMGUI_IMPL_METAL_CPP
 #include "imgui/imgui_extension.h"
 #include "imgui/imgui_impl_metal.h"
+
+#define EVENT_VALUE_WRAP 4096
 
 extern bool hasValidFramebufferAttached;
 
@@ -47,6 +50,9 @@ MetalRenderer::MetalRenderer()
     m_pixelFormatSupport = MetalPixelFormatSupport(m_device);
 
     CheckForPixelFormatSupport(m_pixelFormatSupport);
+
+    // Synchronization resources
+    m_event = m_device->newEvent();
 
     // Resources
     MTL::SamplerDescriptor* samplerDescriptor = MTL::SamplerDescriptor::alloc()->init();
@@ -118,7 +124,7 @@ MetalRenderer::MetalRenderer()
 	MTL::Library* utilityLibrary = m_device->newLibrary(ToNSString(utilityShaderSource), nullptr, &error);
 	if (error)
     {
-        debug_printf("failed to create utility library (error: %s)\n", error->localizedDescription()->utf8String());
+        cemuLog_log(LogType::Force, "failed to create utility library (error: {})", error->localizedDescription()->utf8String());
         error->release();
         throw;
         return;
@@ -160,6 +166,8 @@ MetalRenderer::~MetalRenderer()
         m_xfbRingBuffer->release();
 
     m_occlusionQuery.m_resultBuffer->release();
+
+    m_event->release();
 
     m_commandQueue->release();
     m_device->release();
@@ -391,12 +399,9 @@ void MetalRenderer::Flush(bool waitIdle)
 {
     if (m_recordedDrawcalls > 0 || waitIdle)
         CommitCommandBuffer();
-    if (waitIdle)
-    {
-        cemu_assert_debug(m_currentCommandBuffer.m_commited);
 
-        m_currentCommandBuffer.m_commandBuffer->waitUntilCompleted();
-    }
+    if (waitIdle && m_executingCommandBuffers.size() != 0)
+        m_executingCommandBuffers.back()->waitUntilCompleted();
 }
 
 void MetalRenderer::NotifyLatteCommandProcessorIdle()
@@ -447,7 +452,7 @@ void MetalRenderer::ImguiEnd()
 
     if (m_encoderType != MetalEncoderType::Render)
     {
-        debug_printf("no render command encoder, cannot draw ImGui\n");
+        cemuLog_logOnce(LogType::Force, "no render command encoder, cannot draw ImGui");
         return;
     }
 
@@ -614,6 +619,7 @@ void MetalRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, s
     memcpy(allocation.data, pixelData, compressedImageSize);
     //buffer->didModifyRange(NS::Range(allocation.offset, allocation.size));
 
+    // TODO: specify blit options when copying to a depth stencil texture?
     // Copy the data from the temporary buffer to the texture
     blitCommandEncoder->copyFromBuffer(buffer, allocation.offset, bytesPerRow, 0, MTL::Size(width, height, 1), textureMtl->GetTexture(), sliceIndex, mipIndex, MTL::Origin(0, 0, offsetZ));
     //}
@@ -842,7 +848,7 @@ void MetalRenderer::draw_beginSequence()
 	LatteSHRC_UpdateActiveShaders();
 	if (LatteGPUState.activeShaderHasError)
 	{
-		debug_printf("Skipping drawcalls due to shader error\n");
+		cemuLog_logOnce(LogType::Force, "Skipping drawcalls due to shader error\n");
 		m_state.m_skipDrawSequence = true;
 		cemu_assert_debug(false);
 		return;
@@ -855,14 +861,14 @@ void MetalRenderer::draw_beginSequence()
 		LatteGPUState.repeatTextureInitialization = false;
 		if (!LatteMRT::UpdateCurrentFBO())
 		{
-			debug_printf("Rendertarget invalid\n");
+			cemuLog_logOnce(LogType::Force, "Rendertarget invalid\n");
 			m_state.m_skipDrawSequence = true;
 			return; // no render target
 		}
 
 		if (!hasValidFramebufferAttached && !streamoutEnable)
 		{
-			debug_printf("Drawcall with no color buffer or depth buffer attached\n");
+			cemuLog_logOnce(LogType::Force, "Drawcall with no color buffer or depth buffer attached\n");
 			m_state.m_skipDrawSequence = true;
 			return; // no render target
 		}
@@ -1233,7 +1239,7 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
             verticesPerPrimitive = 3;
             break;
         default:
-            debug_printf("invalid primitive mode %u\n", (uint32)primitiveMode);
+            cemuLog_log(LogType::Force, "unimplemented geometry shader primitive mode {}", (uint32)primitiveMode);
             break;
         }
 
@@ -1389,13 +1395,12 @@ void MetalRenderer::occlusionQuery_destroy(LatteQueryObject* queryObj) {
 }
 
 void MetalRenderer::occlusionQuery_flush() {
-    // TODO: wait for all command buffers with occlusion queries?
     if (m_occlusionQuery.m_lastCommandBuffer)
         m_occlusionQuery.m_lastCommandBuffer->waitUntilCompleted();
 }
 
 void MetalRenderer::occlusionQuery_updateState() {
-    // TODO: implement
+    ProcessFinishedCommandBuffers();
 }
 
 void MetalRenderer::SetBuffer(MTL::RenderCommandEncoder* renderCommandEncoder, MetalShaderType shaderType, MTL::Buffer* buffer, size_t offset, uint32 index)
@@ -1507,6 +1512,10 @@ MTL::CommandBuffer* MetalRenderer::GetCommandBuffer()
 
 	    MTL::CommandBuffer* mtlCommandBuffer = m_commandQueue->commandBuffer();
 		m_currentCommandBuffer = {mtlCommandBuffer};
+
+		// Wait for the previous command buffer
+		if (m_eventValue != -1)
+		    mtlCommandBuffer->encodeWait(m_event, m_eventValue);
 
 		m_recordedDrawcalls = 0;
 		m_commitTreshold = m_defaultCommitTreshlod;
@@ -1674,6 +1683,9 @@ void MetalRenderer::CommitCommandBuffer()
 
     EndEncoding();
 
+    ProcessFinishedCommandBuffers();
+
+    // Commit the command buffer
     if (!m_currentCommandBuffer.m_commited)
     {
         // Handled differently, since it seems like Metal doesn't always call the completion handler
@@ -1681,15 +1693,46 @@ void MetalRenderer::CommitCommandBuffer()
         //    m_memoryManager->GetTemporaryBufferAllocator().CommandBufferFinished(commandBuffer.m_commandBuffer);
         //});
 
-        m_currentCommandBuffer.m_commandBuffer->commit();
-        m_currentCommandBuffer.m_commandBuffer->release();
+        // Signal event
+        m_eventValue = (m_eventValue + 1) % EVENT_VALUE_WRAP;
+        auto mtlCommandBuffer = m_currentCommandBuffer.m_commandBuffer;
+        mtlCommandBuffer->encodeSignalEvent(m_event, m_eventValue);
+
+        mtlCommandBuffer->commit();
         m_currentCommandBuffer.m_commited = true;
+
+        m_executingCommandBuffers.push_back(mtlCommandBuffer);
 
         m_memoryManager->GetTemporaryBufferAllocator().SetActiveCommandBuffer(nullptr);
 
         // Debug
         //m_commandQueue->insertDebugCaptureBoundary();
     }
+}
+
+void MetalRenderer::ProcessFinishedCommandBuffers()
+{
+    // Check for finished command buffers
+    bool atLeastOneCompleted = false;
+    for (auto it = m_executingCommandBuffers.begin(); it != m_executingCommandBuffers.end();)
+    {
+        auto commandBuffer = *it;
+        if (CommandBufferCompleted(commandBuffer))
+        {
+            m_memoryManager->GetTemporaryBufferAllocator().CommandBufferFinished(commandBuffer);
+            commandBuffer->release();
+            it = m_executingCommandBuffers.erase(it);
+            atLeastOneCompleted = true;
+        }
+        else
+        {
+            ++it;
+        }
+    }
+
+    // Invalidate indices if at least one command buffer has completed
+    if (atLeastOneCompleted)
+        LatteIndices_invalidateAll();
 }
 
 bool MetalRenderer::AcquireDrawable(bool mainWindow)
@@ -1788,7 +1831,7 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
 		uint32 binding = shader->resourceMapping.getTextureBaseBindingPoint() + i;
 		if (binding >= MAX_MTL_TEXTURES)
 		{
-		    debug_printf("invalid texture binding %u\n", binding);
+		    cemuLog_logOnce(LogType::Force, "invalid texture binding {}", binding);
             continue;
 		}
 
@@ -1936,7 +1979,7 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
     		uint32 binding = shader->resourceMapping.uniformBuffersBindingPoint[i];
     		if (binding >= MAX_MTL_BUFFERS)
     		{
-    		    debug_printf("invalid buffer binding%u\n", binding);
+    		    cemuLog_logOnce(LogType::Force, "invalid buffer binding {}", binding);
     			continue;
     		}
 

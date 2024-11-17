@@ -5,7 +5,7 @@
 
 namespace LatteDecompiler
 {
-	static void _emitUniformVariables(LatteDecompilerShaderContext* decompilerContext)
+	static void _emitUniformVariables(LatteDecompilerShaderContext* decompilerContext, bool isRectVertexShader)
 	{
 	    auto src = decompilerContext->shaderSource;
 
@@ -85,7 +85,11 @@ namespace LatteDecompiler
 			uniformCurrentOffset += 8;
 		}
 		// define verticesPerInstance + streamoutBufferBaseX
-		if (shader->shaderType == LatteConst::ShaderType::Vertex || shader->shaderType == LatteConst::ShaderType::Geometry)
+		if ((shader->shaderType == LatteConst::ShaderType::Vertex &&
+		    (decompilerContext->options->usesGeometryShader || isRectVertexShader)) ||
+	        (decompilerContext->analyzer.useSSBOForStreamout &&
+			(shader->shaderType == LatteConst::ShaderType::Vertex && !decompilerContext->options->usesGeometryShader) ||
+			(shader->shaderType == LatteConst::ShaderType::Geometry)))
 		{
 			src->add("int verticesPerInstance;" _CRLF);
 			uniformOffsets.offset_verticesPerInstance = uniformCurrentOffset;
@@ -362,7 +366,7 @@ namespace LatteDecompiler
                 src->add("#define VERTICES_PER_VERTEX_PRIMITIVE 3" _CRLF);
                 break;
             default:
-                cemu_assert_suspicious();
+                cemuLog_log(LogType::Force, "Unknown vertex out primitive type {}", vsOutPrimType);
                 break;
             }
             if (decompilerContext->shaderType == LatteConst::ShaderType::Geometry)
@@ -382,17 +386,22 @@ namespace LatteDecompiler
                    	src->add("#define GET_PRIMITIVE_COUNT(vertexCount) (vertexCount - 2)" _CRLF);
                     break;
                 default:
-                    cemu_assert_suspicious();
+                    cemuLog_log(LogType::Force, "Unknown geometry out primitive type {}", gsOutPrimType);
                     break;
                 }
             }
         }
 
+        if (decompilerContext->contextRegistersNew->PA_CL_CLIP_CNTL.get_DX_CLIP_SPACE_DEF())
+			src->add("#define SET_POSITION(_v) out.position = _v" _CRLF);
+		else
+			src->add("#define SET_POSITION(_v) out.position = _v; out.position.z = (out.position.z + out.position.w) / 2.0" _CRLF);
+
 		const bool dump_shaders_enabled = ActiveSettings::DumpShadersEnabled();
 		if(dump_shaders_enabled)
 			decompilerContext->shaderSource->add("// start of shader inputs/outputs, predetermined by Cemu. Do not touch" _CRLF);
 		// uniform variables
-		_emitUniformVariables(decompilerContext);
+		_emitUniformVariables(decompilerContext, isRectVertexShader);
 		// uniform buffers
 		_emitUniformBuffers(decompilerContext);
 		// inputs and outputs
