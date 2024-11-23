@@ -849,7 +849,7 @@ static void _emitOperandInputCode(LatteDecompilerShaderContext* shaderContext, L
 	else if( GPU7_ALU_SRC_IS_LITERAL(aluInstruction->sourceOperand[operandIndex].sel) )
 	{
 		if( requiredType == LATTE_DECOMPILER_DTYPE_SIGNED_INT )
-			src->addFmt("0x{:x}", aluInstruction->literalData.w[aluInstruction->sourceOperand[operandIndex].chan]);
+			src->addFmt("int(0x{:x})", aluInstruction->literalData.w[aluInstruction->sourceOperand[operandIndex].chan]);
 		else if( requiredType == LATTE_DECOMPILER_DTYPE_UNSIGNED_INT )
 			src->addFmt("uint(0x{:x})", aluInstruction->literalData.w[aluInstruction->sourceOperand[operandIndex].chan]);
 		else if (requiredType == LATTE_DECOMPILER_DTYPE_FLOAT)
@@ -2240,8 +2240,7 @@ static void _emitTEXSampleTextureCode(LatteDecompilerShaderContext* shaderContex
 
 	bool unnormalizationHandled = false;
 	bool useTexelCoordinates = false;
-	bool isRead = ((texOpcode == GPU7_TEX_INST_SAMPLE && (texInstruction->textureFetch.unnormalized[0] && texInstruction->textureFetch.unnormalized[1] && texInstruction->textureFetch.unnormalized[2] && texInstruction->textureFetch.unnormalized[3])) ||
-    	    texOpcode == GPU7_TEX_INST_LD);
+	bool isRead = ((texOpcode == GPU7_TEX_INST_SAMPLE && (texInstruction->textureFetch.unnormalized[0] && texInstruction->textureFetch.unnormalized[1] && texInstruction->textureFetch.unnormalized[2] && texInstruction->textureFetch.unnormalized[3])) || texOpcode == GPU7_TEX_INST_LD);
 
 	// handle illegal combinations
 	if (texOpcode == GPU7_TEX_INST_FETCH4 && (texDim == Latte::E_DIM::DIM_1D || texDim == Latte::E_DIM::DIM_1D_ARRAY))
@@ -2317,7 +2316,7 @@ static void _emitTEXSampleTextureCode(LatteDecompilerShaderContext* shaderContex
 		// handle integer coordinates for texelFetch
 		if (texDim == Latte::E_DIM::DIM_2D || texDim == Latte::E_DIM::DIM_2D_MSAA)
 		{
-			src->add("int2(");
+			src->add("uint2(");
 			src->add("float2(");
 			_emitTEXSampleCoordInputComponent(shaderContext, texInstruction, 0, texCoordDataType);
 			src->addFmt(", ");
@@ -2331,7 +2330,7 @@ static void _emitTEXSampleTextureCode(LatteDecompilerShaderContext* shaderContex
 		else if (texDim == Latte::E_DIM::DIM_1D)
 		{
 			// VC DS games forget to initialize textures and use texel fetch on an uninitialized texture (a dim of 0 maps to 1D)
-			src->add("int(");
+			src->add("uint(");
 			src->add("float(");
 			_emitTEXSampleCoordInputComponent(shaderContext, texInstruction, 0, (texOpcode == GPU7_TEX_INST_LD) ? LATTE_DECOMPILER_DTYPE_SIGNED_INT : LATTE_DECOMPILER_DTYPE_FLOAT);
 			src->addFmt(")*supportBuffer.tex{}Scale.x", texInstruction->textureFetch.textureIndex);
@@ -2459,7 +2458,7 @@ static void _emitTEXSampleTextureCode(LatteDecompilerShaderContext* shaderContex
     				src->add(")");
     			}
     		}
-    		else if (!isRead && !isGather/*texOpcode == GPU7_TEX_INST_SAMPLE_LZ || texOpcode == GPU7_TEX_INST_SAMPLE_C_LZ*/)
+    		else if (texOpcode == GPU7_TEX_INST_SAMPLE_LZ || texOpcode == GPU7_TEX_INST_SAMPLE_C_LZ)
     		{
     			src->add(", level(0.0)");
     		}
@@ -2469,9 +2468,9 @@ static void _emitTEXSampleTextureCode(LatteDecompilerShaderContext* shaderContex
 	if (texOpcode == GPU7_TEX_INST_SAMPLE_G)
 	{
 		if (texDim == Latte::E_DIM::DIM_2D ||
-			texDim == Latte::E_DIM::DIM_1D )
+			texDim == Latte::E_DIM::DIM_1D)
 		{
-			src->add(",gradH.xy,gradV.xy");
+			src->add(", gradient2d(gradH.xy, gradV.xy)");
 		}
 		else
 		{

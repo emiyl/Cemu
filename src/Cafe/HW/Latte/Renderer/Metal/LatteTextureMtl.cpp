@@ -27,15 +27,12 @@ LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM 
 	effectiveBaseHeight = std::max(1, effectiveBaseHeight);
 	effectiveBaseDepth = std::max(1, effectiveBaseDepth);
 
-	desc->setWidth(effectiveBaseWidth);
-	desc->setHeight(effectiveBaseHeight);
-	desc->setMipmapLevelCount(mipLevels);
-
 	MTL::TextureType textureType;
 	switch (dim)
     {
     case Latte::E_DIM::DIM_1D:
         textureType = MTL::TextureType1D;
+        effectiveBaseHeight = 1;
         break;
     case Latte::E_DIM::DIM_2D:
     case Latte::E_DIM::DIM_2D_MSAA:
@@ -59,19 +56,19 @@ LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM 
     }
     desc->setTextureType(textureType);
 
+	desc->setWidth(effectiveBaseWidth);
+	desc->setHeight(effectiveBaseHeight);
+	desc->setMipmapLevelCount(mipLevels);
+
 	if (textureType == MTL::TextureType3D)
 	{
 		desc->setDepth(effectiveBaseDepth);
-	}
-	else if (textureType == MTL::TextureTypeCube)
-	{
-	    // Do nothing
 	}
 	else if (textureType == MTL::TextureTypeCubeArray)
 	{
 		desc->setArrayLength(effectiveBaseDepth / 6);
 	}
-	else
+	else if (textureType == MTL::TextureType2DArray)
 	{
 		desc->setArrayLength(effectiveBaseDepth);
 	}
