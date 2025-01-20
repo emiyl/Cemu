@@ -8,6 +8,11 @@
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteShader.h"
 #include "Cafe/HW/Latte/Renderer/Renderer.h"
+#include "Common/MemPtr.h"
+#include "HW/Latte/ISA/LatteReg.h"
+
+// Defined in LatteTextureLegacy.cpp
+Latte::E_GX2SURFFMT LatteTexture_ReconstructGX2Format(const Latte::LATTE_SQ_TEX_RESOURCE_WORD1_N& texUnitWord1, const Latte::LATTE_SQ_TEX_RESOURCE_WORD4_N& texUnitWord4);
 
 /*
  * Return index of used color attachment based on shader pixel export index (0-7)
@@ -140,6 +145,8 @@ bool _isIntegerInstruction(const LatteDecompilerALUInstruction& aluInstruction)
 		case ALU_OP2_INST_SUB_INT:
 		case ALU_OP2_INST_MAX_INT:
 		case ALU_OP2_INST_MIN_INT:
+		case ALU_OP2_INST_MAX_UINT:
+		case ALU_OP2_INST_MIN_UINT:
 		case ALU_OP2_INST_SETE_INT:
 		case ALU_OP2_INST_SETGT_INT:
 		case ALU_OP2_INST_SETGE_INT:
@@ -382,7 +389,7 @@ void LatteDecompiler_analyzeExport(LatteDecompilerShaderContext* shaderContext, 
 	LatteDecompilerShader* shader = shaderContext->shader;
 	if( shader->shaderType == LatteConst::ShaderType::Pixel )
 	{
-		if( cfInstruction->exportType == 0 && cfInstruction->exportArrayBase < 8 )
+		if (cfInstruction->exportType == 0 && cfInstruction->exportArrayBase < 8)
 		{
 			// remember color outputs that are written
 			for(uint32 i=0; i<(cfInstruction->exportBurstCount+1); i++)
@@ -391,9 +398,10 @@ void LatteDecompiler_analyzeExport(LatteDecompilerShaderContext* shaderContext, 
 				shader->pixelColorOutputMask |= (1<<colorOutputIndex);
 			}
 		}
-		else if( cfInstruction->exportType == 0 && cfInstruction->exportArrayBase == 61 )
+		else if (cfInstruction->exportType == 0 && cfInstruction->exportArrayBase == 61)
 		{
-			shader->depthWritten = true;
+		    if (LatteMRT::GetActiveDepthBufferMask(*shaderContext->contextRegistersNew))
+				shader->depthMask = true;
 		}
 		else
 			debugBreakpoint();
@@ -503,7 +511,7 @@ namespace LatteDecompiler
 		// for Vulkan we use consecutive indices
 		for (sint32 i = 0; i < LATTE_NUM_MAX_TEX_UNITS; i++)
 		{
-			if (!decompilerContext->output->textureUnitMask[i])
+			if (!decompilerContext->output->textureUnitMask[i] || decompilerContext->shader->textureRenderTargetIndex[i] != 255)
 				continue;
 			decompilerContext->output->resourceMappingMTL.textureUnitToBindingPoint[i] = decompilerContext->currentTextureBindingPointMTL;
 			decompilerContext->currentTextureBindingPointMTL++;
@@ -551,7 +559,6 @@ namespace LatteDecompiler
 		{
             bool isRectVertexShader = (static_cast<LattePrimitiveMode>(decompilerContext->contextRegisters[mmVGT_PRIMITIVE_TYPE]) == LattePrimitiveMode::RECTS);
 
-		    // TODO: also check for rect primitive
 		    if (decompilerContext->shaderType == LatteConst::ShaderType::Vertex && (decompilerContext->options->usesGeometryShader || isRectVertexShader))
 				decompilerContext->hasUniformVarBlock = true; // uf_verticesPerInstance
 		}
@@ -849,6 +856,81 @@ void LatteDecompiler_analyze(LatteDecompilerShaderContext* shaderContext, LatteD
 			shader->textureUnitList[shader->textureUnitListCount] = i;
 			shader->textureUnitListCount++;
 		}
+		shader->textureRenderTargetIndex[i] = 255;
+	}
+	// check if textures are used as render targets
+	if (shader->shaderType == LatteConst::ShaderType::Pixel)
+	{
+		struct {
+		    sint32 index;
+		    MPTR physAddr;
+			Latte::E_GX2SURFFMT format;
+			Latte::E_HWTILEMODE tileMode;
+		} colorBuffers[LATTE_NUM_COLOR_TARGET]{};
+
+        uint8 colorBufferMask = LatteMRT::GetActiveColorBufferMask(shader, *shaderContext->contextRegistersNew);
+        sint32 colorBufferCount = 0;
+		for (sint32 i = 0; i < LATTE_NUM_COLOR_TARGET; i++)
+        {
+            auto& colorBuffer = colorBuffers[colorBufferCount];
+            if (((colorBufferMask) & (1 << i)) == 0)
+                continue; // color buffer not enabled
+
+            uint32* colorBufferRegBase = shaderContext->contextRegisters + (mmCB_COLOR0_BASE + i);
+           	uint32 regColorBufferBase = colorBufferRegBase[mmCB_COLOR0_BASE - mmCB_COLOR0_BASE] & 0xFFFFFF00; // the low 8 bits are ignored? How to Survive seems to rely on this
+
+            uint32 regColorInfo = colorBufferRegBase[mmCB_COLOR0_INFO - mmCB_COLOR0_BASE];
+
+           	MPTR colorBufferPhysMem = regColorBufferBase;
+            Latte::E_HWTILEMODE colorBufferTileMode = (Latte::E_HWTILEMODE)((regColorInfo >> 8) & 0xF);
+
+            Latte::E_GX2SURFFMT colorBufferFormat = LatteMRT::GetColorBufferFormat(i, *shaderContext->contextRegistersNew);
+
+            colorBuffer = {i, colorBufferPhysMem, colorBufferFormat, colorBufferTileMode};
+            colorBufferCount++;
+        }
+
+	    for (sint32 i = 0; i < shader->textureUnitListCount; i++)
+        {
+            sint32 textureIndex = shader->textureUnitList[i];
+      		const auto& texRegister = texRegs[textureIndex];
+
+      		// get physical address of texture data
+      		MPTR physAddr = (texRegister.word2.get_BASE_ADDRESS() << 8);
+      		if (physAddr == MPTR_NULL)
+                continue; // invalid data
+
+            auto tileMode = texRegister.word0.get_TILE_MODE();
+
+            // Check for dimension
+            auto dim = shader->textureUnitDim[textureIndex];
+            // TODO: 2D arrays could technically be supported as well
+            if (dim != Latte::E_DIM::DIM_2D)
+                continue;
+
+            // Check for mip level
+            // TODO: uncomment?
+            /*
+            auto lastMip = texRegister.word5.get_LAST_LEVEL();
+            // TODO: multiple mip levels could technically be supported as well
+            if (lastMip != 0)
+                continue;
+            */
+
+            Latte::E_GX2SURFFMT format = LatteTexture_ReconstructGX2Format(texRegister.word1, texRegister.word4);
+
+            // Check if the texture is used as render target
+            for (sint32 j = 0; j < colorBufferCount; j++)
+            {
+                const auto& colorBuffer = colorBuffers[j];
+
+                if (physAddr == colorBuffer.physAddr && format == colorBuffer.format && tileMode == colorBuffer.tileMode)
+                {
+                    shader->textureRenderTargetIndex[textureIndex] = colorBuffer.index;
+                    break;
+                }
+            }
+        }
 	}
 	// for geometry shaders check the copy shader for stream writes
 	if (shader->shaderType == LatteConst::ShaderType::Geometry && shaderContext->parsedGSCopyShader->list_streamWrites.empty() == false)

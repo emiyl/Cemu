@@ -404,6 +404,7 @@ struct CemuConfig
 #endif
 	ConfigValue<bool> disable_screensaver{DISABLE_SCREENSAVER_DEFAULT};
 #undef DISABLE_SCREENSAVER_DEFAULT
+	ConfigValue<bool> play_boot_sound{false};
 
 	std::vector<std::string> game_paths;
 	std::mutex game_cache_entries_mutex;
@@ -462,9 +463,10 @@ struct CemuConfig
 
 	// graphics
 	ConfigValue<GraphicAPI> graphic_api{ kVulkan };
-	std::array<uint8, 16> graphic_device_uuid;
-	ConfigValue<int> vsync{ 0 }; // 0 = off, 1+ = on depending on render backend
-	ConfigValue<bool> gx2drawdone_sync {true};
+	std::array<uint8, 16> vk_graphic_device_uuid;
+	uint64 mtl_graphic_device_uuid{ 0 };
+	ConfigValue<int> vsync{ 0 }; // 0 = off, 1+ = depending on render backend
+	ConfigValue<bool> gx2drawdone_sync { true };
 	ConfigValue<bool> render_upside_down{ false };
 	ConfigValue<bool> async_compile{ true };
 
@@ -525,6 +527,8 @@ struct CemuConfig
 	// debug
 	ConfigValueBounds<CrashDump> crash_dump{ CrashDump::Disabled };
 	ConfigValue<uint16> gdb_port{ 1337 };
+	ConfigValue<std::string> gpu_capture_dir{ "" };
+	ConfigValue<bool> framebuffer_fetch{ true };
 
 	void Load(XMLConfigParser& parser);
 	void Save(XMLConfigParser& parser);
@@ -548,7 +552,20 @@ struct CemuConfig
 		ConfigValue<bool> emulate_dimensions_toypad{false};
 	}emulated_usb_devices{};
 
-	private:
+	static int AudioChannelsToNChannels(AudioChannels kStereo)
+	{
+		switch (kStereo)
+		{
+		case 0:
+			return 1; // will mix mono sound on both output channels
+		case 2:
+			return 6;
+		default: // stereo
+			return 2;
+		}
+	}
+
+  private:
 	GameEntry* GetGameEntryByTitleId(uint64 titleId);
 	GameEntry* CreateGameEntry(uint64 titleId);
 };

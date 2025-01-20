@@ -9,6 +9,7 @@
 #include "audio/IAudioAPI.h"
 #include "audio/IAudioInputAPI.h"
 #include "config/ActiveSettings.h"
+#include "config/LaunchSettings.h"
 #include "Cafe/TitleList/GameInfo.h"
 #include "Cafe/GraphicPack/GraphicPack2.h"
 #include "util/helpers/SystemException.h"
@@ -259,6 +260,7 @@ void InfoLog_PrintActiveSettings()
 	    cemuLog_log(LogType::Force, "Async compile: {}", GetConfig().async_compile.GetValue() ? "true" : "false");
 		cemuLog_log(LogType::Force, "Fast math: {}", g_current_game_profile->GetFastMath() ? "true" : "false");
 		cemuLog_log(LogType::Force, "Buffer cache type: {}", g_current_game_profile->GetBufferCacheMode());
+		cemuLog_log(LogType::Force, "Position invariance: {}", g_current_game_profile->GetPositionInvariance() ? "true" : "false");
 		if (!GetConfig().vk_accurate_barriers.GetValue())
 			cemuLog_log(LogType::Force, "Accurate barriers are disabled!");
 	}
@@ -851,7 +853,7 @@ namespace CafeSystem
 			module->TitleStart();
 		cemu_initForGame();
 		// enter scheduler
-		if (ActiveSettings::GetCPUMode() == CPUMode::MulticoreRecompiler)
+		if (ActiveSettings::GetCPUMode() == CPUMode::MulticoreRecompiler && !LaunchSettings::ForceInterpreter())
 			coreinit::OSSchedulerBegin(3);
 		else
 			coreinit::OSSchedulerBegin(1);

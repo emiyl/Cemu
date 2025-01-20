@@ -46,6 +46,7 @@ void CemuConfig::Load(XMLConfigParser& parser)
 	fullscreen = parser.get("fullscreen", fullscreen);
 	proxy_server = parser.get("proxy_server", "");
 	disable_screensaver = parser.get("disable_screensaver", disable_screensaver);
+	play_boot_sound = parser.get("play_boot_sound", play_boot_sound);
 	console_language = parser.get("console_language", console_language.GetInitValue());
 
 	window_position.x = parser.get("window_position").get("x", -1);
@@ -212,7 +213,8 @@ void CemuConfig::Load(XMLConfigParser& parser)
 	// graphics
 	auto graphic = parser.get("Graphic");
 	graphic_api = graphic.get("api", kOpenGL);
-	graphic.get("device", graphic_device_uuid);
+	graphic.get("vkDevice", vk_graphic_device_uuid);
+	mtl_graphic_device_uuid = graphic.get("mtlDevice", 0);
 	vsync = graphic.get("VSync", 0);
 	gx2drawdone_sync = graphic.get("GX2DrawdoneSync", true);
 	upscale_filter = graphic.get("UpscaleFilter", kBicubicHermiteFilter);
@@ -335,6 +337,8 @@ void CemuConfig::Load(XMLConfigParser& parser)
 	crash_dump = debug.get("CrashDumpUnix", crash_dump);
 #endif
 	gdb_port = debug.get("GDBPort", 1337);
+	gpu_capture_dir = debug.get("GPUCaptureDir", "");
+	framebuffer_fetch = debug.get("FramebufferFetch", true);
 
 	// input
 	auto input = parser.get("Input");
@@ -370,6 +374,7 @@ void CemuConfig::Save(XMLConfigParser& parser)
 	config.set<bool>("fullscreen", fullscreen);
 	config.set("proxy_server", proxy_server.GetValue().c_str());
 	config.set<bool>("disable_screensaver", disable_screensaver);
+	config.set<bool>("play_boot_sound", play_boot_sound);
 
 	// config.set("cpu_mode", cpu_mode.GetValue());
 	//config.set("console_region", console_region.GetValue());
@@ -468,7 +473,8 @@ void CemuConfig::Save(XMLConfigParser& parser)
 	// graphics
 	auto graphic = config.set("Graphic");
 	graphic.set("api", graphic_api);
-	graphic.set("device", graphic_device_uuid);
+	graphic.set("vkDevice", vk_graphic_device_uuid);
+	graphic.set("mtlDevice", mtl_graphic_device_uuid);
 	graphic.set("VSync", vsync);
 	graphic.set("GX2DrawdoneSync", gx2drawdone_sync);
 	//graphic.set("PrecompiledShaders", precompiled_shaders.GetValue());
@@ -535,6 +541,8 @@ void CemuConfig::Save(XMLConfigParser& parser)
 	debug.set("CrashDumpUnix", crash_dump.GetValue());
 #endif
 	debug.set("GDBPort", gdb_port);
+	debug.set("GPUCaptureDir", gpu_capture_dir);
+	debug.set("FramebufferFetch", framebuffer_fetch);
 
 	// input
 	auto input = config.set("Input");

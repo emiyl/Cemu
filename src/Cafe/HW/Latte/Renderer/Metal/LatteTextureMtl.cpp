@@ -2,17 +2,14 @@
 #include "Cafe/HW/Latte/Renderer/Metal/LatteTextureViewMtl.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
 #include "Cafe/HW/Latte/Renderer/Metal/LatteToMtl.h"
-#include "Common/precompiled.h"
-#include "Metal/MTLResource.hpp"
-#include "Metal/MTLTexture.hpp"
 
 LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM dim, MPTR physAddress, MPTR physMipAddress, Latte::E_GX2SURFFMT format, uint32 width, uint32 height, uint32 depth, uint32 pitch, uint32 mipLevels, uint32 swizzle,
 	Latte::E_HWTILEMODE tileMode, bool isDepth)
-	: LatteTexture(dim, physAddress, physMipAddress, format, width, height, depth, pitch, mipLevels, swizzle, tileMode, isDepth), m_mtlr(mtlRenderer), m_format(format), m_isDepth(isDepth)
+	: LatteTexture(dim, physAddress, physMipAddress, format, width, height, depth, pitch, mipLevels, swizzle, tileMode, isDepth), m_mtlr(mtlRenderer)
 {
     MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
     desc->setStorageMode(MTL::StorageModePrivate);
-    desc->setCpuCacheMode(MTL::CPUCacheModeWriteCombined);
+    //desc->setCpuCacheMode(MTL::CPUCacheModeWriteCombined);
 
 	sint32 effectiveBaseWidth = width;
 	sint32 effectiveBaseHeight = height;
@@ -56,6 +53,10 @@ LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM 
     }
     desc->setTextureType(textureType);
 
+    // Clamp mip levels
+    mipLevels = std::min(mipLevels, (uint32)maxPossibleMipLevels);
+    mipLevels = std::max(mipLevels, (uint32)1);
+
 	desc->setWidth(effectiveBaseWidth);
 	desc->setHeight(effectiveBaseHeight);
 	desc->setMipmapLevelCount(mipLevels);
@@ -77,7 +78,7 @@ LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM 
 	desc->setPixelFormat(pixelFormat);
 
 	MTL::TextureUsage usage = MTL::TextureUsageShaderRead | MTL::TextureUsagePixelFormatView;
-	if (!Latte::IsCompressedFormat(format))
+	if (FormatIsRenderable(format))
 		usage |= MTL::TextureUsageRenderTarget;
 	desc->setUsage(usage);
 

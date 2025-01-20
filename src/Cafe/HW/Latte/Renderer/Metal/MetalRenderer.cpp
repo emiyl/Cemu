@@ -16,10 +16,12 @@
 
 #include "Cafe/HW/Latte/Core/LatteShader.h"
 #include "Cafe/HW/Latte/Core/LatteIndices.h"
-#include "Cemu/Logging/CemuDebugLogging.h"
+#include "Cafe/HW/Latte/Core/LatteBufferCache.h"
 #include "Cemu/Logging/CemuLogging.h"
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteConst.h"
+#include "HW/Latte/Renderer/Metal/MetalBufferAllocator.h"
+#include "HW/Latte/Renderer/Metal/MetalCommon.h"
 #include "config/CemuConfig.h"
 #include "gui/guiWrapper.h"
 
@@ -36,19 +38,64 @@ float supportBufferData[512 * 4];
 // Defined in the OpenGL renderer
 void LatteDraw_handleSpecialState8_clearAsDepth();
 
+std::vector<MetalRenderer::DeviceInfo> MetalRenderer::GetDevices()
+{
+    auto devices = MTL::CopyAllDevices();
+    std::vector<MetalRenderer::DeviceInfo> result;
+    result.reserve(devices->count());
+    for (uint32 i = 0; i < devices->count(); i++)
+    {
+        MTL::Device* device = static_cast<MTL::Device*>(devices->object(i));
+        result.emplace_back(std::string(device->name()->utf8String()), device->registryID());
+    }
+
+    return result;
+}
+
 MetalRenderer::MetalRenderer()
 {
-    m_device = MTL::CreateSystemDefaultDevice();
-    m_commandQueue = m_device->newCommandQueue();
+    // Pick a device
+    auto& config = GetConfig();
+    const bool hasDeviceSet = config.mtl_graphic_device_uuid != 0;
+
+    // If a device is set, try to find it
+    if (hasDeviceSet)
+    {
+        auto devices = MTL::CopyAllDevices();
+        for (uint32 i = 0; i < devices->count(); i++)
+        {
+            MTL::Device* device = static_cast<MTL::Device*>(devices->object(i));
+            if (device->registryID() == config.mtl_graphic_device_uuid)
+            {
+                m_device = device;
+                break;
+            }
+        }
+    }
+
+    if (!m_device)
+    {
+        if (hasDeviceSet)
+        {
+            cemuLog_log(LogType::Force, "The selected GPU ({}) could not be found. Using the system default device.", config.mtl_graphic_device_uuid);
+            config.mtl_graphic_device_uuid = 0;
+        }
+        // Use the system default device
+        m_device = MTL::CreateSystemDefaultDevice();
+    }
 
     // Feature support
     m_isAppleGPU = m_device->supportsFamily(MTL::GPUFamilyApple1);
+    m_supportsFramebufferFetch = GetConfig().framebuffer_fetch.GetValue() ? m_device->supportsFamily(MTL::GPUFamilyApple2) : false;
     m_hasUnifiedMemory = m_device->hasUnifiedMemory();
     m_supportsMetal3 = m_device->supportsFamily(MTL::GPUFamilyMetal3);
     m_recommendedMaxVRAMUsage = m_device->recommendedMaxWorkingSetSize();
     m_pixelFormatSupport = MetalPixelFormatSupport(m_device);
 
     CheckForPixelFormatSupport(m_pixelFormatSupport);
+
+    // Command queue
+    m_commandQueue = m_device->newCommandQueue();
 
     // Synchronization resources
     m_event = m_device->newEvent();
@@ -141,6 +188,10 @@ MetalRenderer::MetalRenderer()
         m_copyBufferToBufferPipeline = new MetalVoidVertexPipeline(this, utilityLibrary, "vertexCopyBufferToBuffer");
 
     utilityLibrary->release();
+
+    // HACK: for some reason, this variable ends up being initialized to some garbage data, even though its declared as bool m_captureFrame = false;
+    m_occlusionQuery.m_lastCommandBuffer = nullptr;
+    m_captureFrame = false;
 }
 
 MetalRenderer::~MetalRenderer()
@@ -251,14 +302,19 @@ void MetalRenderer::SwapBuffers(bool swapTV, bool swapDRC)
     // Reset the command buffers (they are released by TemporaryBufferAllocator)
     CommitCommandBuffer();
 
-    // Release frame persistent buffers
-    m_memoryManager->GetFramePersistentBufferAllocator().ResetAllocations();
-
-    // Unlock all temporary buffers
-    m_memoryManager->GetTemporaryBufferAllocator().EndFrame();
-
     // Debug
     m_performanceMonitor.ResetPerFrameData();
+
+    // GPU capture
+    if (m_capturing)
+    {
+        EndCapture();
+    }
+    else if (m_captureFrame)
+    {
+        StartCapture();
+        m_captureFrame = false;
+    }
 }
 
 void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padView) {
@@ -289,8 +345,8 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 	int width, height;
 	texMtl->GetEffectiveSize(width, height, 0);
 
-	uint32 bytesPerRow = GetMtlTextureBytesPerRow(texMtl->format, texMtl->IsDepth(), width);
-	uint32 size = GetMtlTextureBytesPerImage(texMtl->format, texMtl->IsDepth(), height, bytesPerRow);
+	uint32 bytesPerRow = GetMtlTextureBytesPerRow(texMtl->format, texMtl->isDepth, width);
+	uint32 size = GetMtlTextureBytesPerImage(texMtl->format, texMtl->isDepth, height, bytesPerRow);
 
 	// TODO: get a buffer from the memory manager
 	MTL::Buffer* buffer = m_device->newBuffer(size, MTL::ResourceStorageModeShared);
@@ -523,20 +579,46 @@ void MetalRenderer::DeleteFontTextures()
 void MetalRenderer::AppendOverlayDebugInfo()
 {
     ImGui::Text("--- GPU info ---");
-    ImGui::Text("Is Apple GPU              %s", (m_isAppleGPU ? "yes" : "no"));
-    ImGui::Text("Has unified memory        %s", (m_hasUnifiedMemory ? "yes" : "no"));
-    ImGui::Text("Supports Metal3           %s", (m_supportsMetal3 ? "yes" : "no"));
+    ImGui::Text("GPU                        %s", m_device->name()->utf8String());
+    ImGui::Text("Is Apple GPU               %s", (m_isAppleGPU ? "yes" : "no"));
+    ImGui::Text("Supports framebuffer fetch %s", (m_supportsFramebufferFetch ? "yes" : "no"));
+    ImGui::Text("Has unified memory         %s", (m_hasUnifiedMemory ? "yes" : "no"));
+    ImGui::Text("Supports Metal3            %s", (m_supportsMetal3 ? "yes" : "no"));
 
     ImGui::Text("--- Metal info ---");
-    ImGui::Text("Render pipeline states    %zu", m_pipelineCache->GetPipelineCacheSize());
-    ImGui::Text("Buffer allocator memory   %zuMB", m_performanceMonitor.m_bufferAllocatorMemory / 1024 / 1024);
+    ImGui::Text("Render pipeline states     %zu", m_pipelineCache->GetPipelineCacheSize());
 
     ImGui::Text("--- Metal info (per frame) ---");
-    ImGui::Text("Command buffers           %u", m_performanceMonitor.m_commandBuffers);
-    ImGui::Text("Render passes             %u", m_performanceMonitor.m_renderPasses);
-    ImGui::Text("Clears                    %u", m_performanceMonitor.m_clears);
-    ImGui::Text("Manual vertex fetch draws %u (mesh draws: %u)", m_performanceMonitor.m_manualVertexFetchDraws, m_performanceMonitor.m_meshDraws);
-    ImGui::Text("Triangle fans             %u", m_performanceMonitor.m_triangleFans);
+    ImGui::Text("Command buffers            %u", m_performanceMonitor.m_commandBuffers);
+    ImGui::Text("Render passes              %u", m_performanceMonitor.m_renderPasses);
+    ImGui::Text("Clears                     %u", m_performanceMonitor.m_clears);
+    ImGui::Text("Manual vertex fetch draws  %u (mesh draws: %u)", m_performanceMonitor.m_manualVertexFetchDraws, m_performanceMonitor.m_meshDraws);
+    ImGui::Text("Triangle fans              %u", m_performanceMonitor.m_triangleFans);
+
+    ImGui::Text("--- Cache debug info ---");
+
+	uint32 bufferCacheHeapSize = 0;
+	uint32 bufferCacheAllocationSize = 0;
+	uint32 bufferCacheNumAllocations = 0;
+
+	LatteBufferCache_getStats(bufferCacheHeapSize, bufferCacheAllocationSize, bufferCacheNumAllocations);
+
+	ImGui::Text("Buffer");
+	ImGui::SameLine(60.0f);
+	ImGui::Text("%06uKB / %06uKB Allocs: %u", (uint32)(bufferCacheAllocationSize + 1023) / 1024, ((uint32)bufferCacheHeapSize + 1023) / 1024, (uint32)bufferCacheNumAllocations);
+
+	uint32 numBuffers;
+	size_t totalSize, freeSize;
+
+	m_memoryManager->GetStagingAllocator().GetStats(numBuffers, totalSize, freeSize);
+	ImGui::Text("Staging");
+	ImGui::SameLine(60.0f);
+	ImGui::Text("%06uKB / %06uKB Buffers: %u", ((uint32)(totalSize - freeSize) + 1023) / 1024, ((uint32)totalSize + 1023) / 1024, (uint32)numBuffers);
+
+	m_memoryManager->GetIndexAllocator().GetStats(numBuffers, totalSize, freeSize);
+	ImGui::Text("Index");
+	ImGui::SameLine(60.0f);
+	ImGui::Text("%06uKB / %06uKB Buffers: %u", ((uint32)(totalSize - freeSize) + 1023) / 1024, ((uint32)totalSize + 1023) / 1024, (uint32)numBuffers);
 }
 
 void MetalRenderer::renderTarget_setViewport(float x, float y, float width, float height, float nearZ, float farZ, bool halfZ)
@@ -606,9 +688,9 @@ void MetalRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, s
         sliceIndex = 0;
     }
 
-    size_t bytesPerRow = GetMtlTextureBytesPerRow(textureMtl->GetFormat(), textureMtl->IsDepth(), width);
+    size_t bytesPerRow = GetMtlTextureBytesPerRow(textureMtl->format, textureMtl->isDepth, width);
     // No need to set bytesPerImage for 3D textures, since we always load just one slice
-    //size_t bytesPerImage = GetMtlTextureBytesPerImage(textureMtl->GetFormat(), textureMtl->IsDepth(), height, bytesPerRow);
+    //size_t bytesPerImage = GetMtlTextureBytesPerImage(textureMtl->GetFormat(), textureMtl->isDepth, height, bytesPerRow);
     //if (m_isAppleGPU)
     //{
     //    textureMtl->GetTexture()->replaceRegion(MTL::Region(0, 0, offsetZ, width, height, 1), mipIndex, sliceIndex, pixelData, bytesPerRow, 0);
@@ -618,22 +700,28 @@ void MetalRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, s
     auto blitCommandEncoder = GetBlitCommandEncoder();
 
     // Allocate a temporary buffer
-    auto& bufferAllocator = m_memoryManager->GetTemporaryBufferAllocator();
-    auto allocation = bufferAllocator.GetBufferAllocation(compressedImageSize);
-    auto buffer = bufferAllocator.GetBuffer(allocation.bufferIndex);
+    auto& bufferAllocator = m_memoryManager->GetStagingAllocator();
+    auto allocation = bufferAllocator.AllocateBufferMemory(compressedImageSize, 1);
+    bufferAllocator.FlushReservation(allocation);
 
     // Copy the data to the temporary buffer
-    memcpy(allocation.data, pixelData, compressedImageSize);
+    memcpy(allocation.memPtr, pixelData, compressedImageSize);
     //buffer->didModifyRange(NS::Range(allocation.offset, allocation.size));
 
     // TODO: specify blit options when copying to a depth stencil texture?
     // Copy the data from the temporary buffer to the texture
-    blitCommandEncoder->copyFromBuffer(buffer, allocation.offset, bytesPerRow, 0, MTL::Size(width, height, 1), textureMtl->GetTexture(), sliceIndex, mipIndex, MTL::Origin(0, 0, offsetZ));
+    blitCommandEncoder->copyFromBuffer(allocation.mtlBuffer, allocation.bufferOffset, bytesPerRow, 0, MTL::Size(width, height, 1), textureMtl->GetTexture(), sliceIndex, mipIndex, MTL::Origin(0, 0, offsetZ));
     //}
 }
 
 void MetalRenderer::texture_clearColorSlice(LatteTexture* hostTexture, sint32 sliceIndex, sint32 mipIndex, float r, float g, float b, float a)
 {
+    if (!FormatIsRenderable(hostTexture->format))
+    {
+        cemuLog_logOnce(LogType::Force, "cannot clear color texture with format {}, because it's not renderable", hostTexture->format);
+        return;
+    }
+
     auto mtlTexture = static_cast<LatteTextureMtl*>(hostTexture)->GetTexture();
 
     ClearColorTextureInternal(mtlTexture, sliceIndex, mipIndex, r, g, b, a);
@@ -641,6 +729,13 @@ void MetalRenderer::texture_clearColorSlice(LatteTexture* hostTexture, sint32 sl
 
 void MetalRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sliceIndex, sint32 mipIndex, bool clearDepth, bool clearStencil, float depthValue, uint32 stencilValue)
 {
+    clearStencil = (clearStencil && GetMtlPixelFormatInfo(hostTexture->format, true).hasStencil);
+    if (!clearDepth && !clearStencil)
+    {
+        cemuLog_logOnce(LogType::Force, "skipping depth/stencil clear");
+        return;
+    }
+
     auto mtlTexture = static_cast<LatteTextureMtl*>(hostTexture)->GetTexture();
 
     MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
@@ -654,7 +749,7 @@ void MetalRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sl
         depthAttachment->setSlice(sliceIndex);
         depthAttachment->setLevel(mipIndex);
     }
-    if (clearStencil && GetMtlPixelFormatInfo(hostTexture->format, true).hasStencil)
+    if (clearStencil)
     {
         auto stencilAttachment = renderPassDescriptor->stencilAttachment();
         stencilAttachment->setTexture(mtlTexture);
@@ -685,6 +780,18 @@ void MetalRenderer::texture_setLatteTexture(LatteTextureView* textureView, uint3
 
 void MetalRenderer::texture_copyImageSubData(LatteTexture* src, sint32 srcMip, sint32 effectiveSrcX, sint32 effectiveSrcY, sint32 srcSlice, LatteTexture* dst, sint32 dstMip, sint32 effectiveDstX, sint32 effectiveDstY, sint32 dstSlice, sint32 effectiveCopyWidth, sint32 effectiveCopyHeight, sint32 srcDepth_)
 {
+    // Source size seems to apply to the destination texture as well, therefore we need to adjust it when block size doesn't match
+    Uvec2 srcBlockTexelSize = GetMtlPixelFormatInfo(src->format, src->isDepth).blockTexelSize;
+    Uvec2 dstBlockTexelSize = GetMtlPixelFormatInfo(dst->format, dst->isDepth).blockTexelSize;
+    if (srcBlockTexelSize.x != dstBlockTexelSize.x || srcBlockTexelSize.y != dstBlockTexelSize.y)
+    {
+        uint32 multX = (srcBlockTexelSize.x > dstBlockTexelSize.x ? srcBlockTexelSize.x / dstBlockTexelSize.x : dstBlockTexelSize.x / srcBlockTexelSize.x);
+        effectiveCopyWidth *= multX;
+
+        uint32 multY = (srcBlockTexelSize.y > dstBlockTexelSize.y ? srcBlockTexelSize.y / dstBlockTexelSize.y : dstBlockTexelSize.y / srcBlockTexelSize.y);
+        effectiveCopyHeight *= multY;
+    }
+
     auto blitCommandEncoder = GetBlitCommandEncoder();
 
     auto mtlSrc = static_cast<LatteTextureMtl*>(src)->GetTexture();
@@ -933,6 +1040,7 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
     LatteDecompilerShader* pixelShader = LatteSHRC_GetActivePixelShader();
     const auto fetchShader = LatteSHRC_GetActiveFetchShader();
 
+    /*
     bool neverSkipAccurateBarrier = false;
 
     // "Accurate barriers" is usually enabled globally but since the CPU cost is substantial we allow users to disable it (debug -> 'Accurate barriers' option)
@@ -956,8 +1064,13 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
     	    endRenderPass = CheckIfRenderPassNeedsFlush(geometryShader);
 
     	if (endRenderPass)
+        {
     	    EndEncoding();
+            // TODO: only log in debug?
+            cemuLog_logOnce(LogType::Force, "Ending render pass due to render target self-dependency\n");
+        }
 	}
+	*/
 
     // Primitive type
     const LattePrimitiveMode primitiveMode = static_cast<LattePrimitiveMode>(LatteGPUState.contextRegister[mmVGT_PRIMITIVE_TYPE]);
@@ -972,9 +1085,9 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
 	uint32 hostIndexCount;
 	uint32 indexMin = 0;
 	uint32 indexMax = 0;
-	uint32 indexBufferOffset = 0;
-	uint32 indexBufferIndex = 0;
-	LatteIndices_decode(memory_getPointerFromVirtualOffset(indexDataMPTR), indexType, count, primitiveMode, indexMin, indexMax, hostIndexType, hostIndexCount, indexBufferOffset, indexBufferIndex);
+	Renderer::IndexAllocation indexAllocation;
+	LatteIndices_decode(memory_getPointerFromVirtualOffset(indexDataMPTR), indexType, count, primitiveMode, indexMin, indexMax, hostIndexType, hostIndexCount, indexAllocation);
+	auto indexAllocationMtl = static_cast<MetalSynchronizedHeapAllocator::AllocatorReservation*>(indexAllocation.rendererInternal);
 
 	// Buffer cache
 	if (m_memoryManager->UseHostMemoryForCache())
@@ -1213,20 +1326,10 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
 	BindStageResources(renderCommandEncoder, pixelShader, usesGeometryShader);
 
 	// Draw
-	MTL::Buffer* indexBuffer = nullptr;
-	if (hostIndexType != INDEX_TYPE::NONE)
-	{
-	    auto& bufferAllocator = m_memoryManager->GetTemporaryBufferAllocator();
-	    indexBuffer = bufferAllocator.GetBuffer(indexBufferIndex);
-
-		// We have already retrieved the buffer, no need for it to be locked anymore
-		bufferAllocator.UnlockBuffer(indexBufferIndex);
-	}
-
 	if (usesGeometryShader)
 	{
-	    if (indexBuffer)
-		    SetBuffer(renderCommandEncoder, METAL_SHADER_TYPE_OBJECT, indexBuffer, indexBufferOffset, vertexShader->resourceMapping.indexBufferBinding);
+	    if (hostIndexType != INDEX_TYPE::NONE)
+		    SetBuffer(renderCommandEncoder, METAL_SHADER_TYPE_OBJECT, indexAllocationMtl->mtlBuffer, indexAllocationMtl->bufferOffset, vertexShader->resourceMapping.indexBufferBinding);
 
 		uint8 hostIndexTypeU8 = (uint8)hostIndexType;
 		renderCommandEncoder->setObjectBytes(&hostIndexTypeU8, sizeof(hostIndexTypeU8), vertexShader->resourceMapping.indexTypeBinding);
@@ -1254,10 +1357,10 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
 	}
 	else
 	{
-        if (indexBuffer)
+        if (hostIndexType != INDEX_TYPE::NONE)
        	{
        	    auto mtlIndexType = GetMtlIndexType(hostIndexType);
-      		renderCommandEncoder->drawIndexedPrimitives(mtlPrimitiveType, hostIndexCount, mtlIndexType, indexBuffer, indexBufferOffset, instanceCount, baseVertex, baseInstance);
+      		renderCommandEncoder->drawIndexedPrimitives(mtlPrimitiveType, hostIndexCount, mtlIndexType, indexAllocationMtl->mtlBuffer, indexAllocationMtl->bufferOffset, instanceCount, baseVertex, baseInstance);
        	}
        	else
        	{
@@ -1397,29 +1500,21 @@ void MetalRenderer::draw_handleSpecialState5()
 	renderCommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle,  NS::UInteger(0),  NS::UInteger(3));
 }
 
-void* MetalRenderer::indexData_reserveIndexMemory(uint32 size, uint32& offset, uint32& bufferIndex)
+Renderer::IndexAllocation MetalRenderer::indexData_reserveIndexMemory(uint32 size)
 {
-    auto& bufferAllocator = m_memoryManager->GetTemporaryBufferAllocator();
-    auto allocation = bufferAllocator.GetBufferAllocation(size);
-	offset = allocation.offset;
-	bufferIndex = allocation.bufferIndex;
+    auto allocation = m_memoryManager->GetIndexAllocator().AllocateBufferMemory(size, 128);
 
-	// Lock the buffer so that it doesn't get released
-	bufferAllocator.LockBuffer(allocation.bufferIndex);
-
-	return allocation.data;
+    return {allocation->memPtr, allocation};
 }
 
-void MetalRenderer::indexData_uploadIndexMemory(uint32 bufferIndex, uint32 offset, uint32 size)
+void MetalRenderer::indexData_releaseIndexMemory(IndexAllocation& allocation)
 {
-    // Do nothing
-    /*
-    if (!HasUnifiedMemory())
-    {
-        auto buffer = m_memoryManager->GetTemporaryBufferAllocator().GetBufferOutsideOfCommandBuffer(bufferIndex);
-        buffer->didModifyRange(NS::Range(offset, size));
-    }
-    */
+    m_memoryManager->GetIndexAllocator().FreeReservation(static_cast<MetalSynchronizedHeapAllocator::AllocatorReservation*>(allocation.rendererInternal));
+}
+
+void MetalRenderer::indexData_uploadIndexMemory(IndexAllocation& allocation)
+{
+    m_memoryManager->GetIndexAllocator().FlushReservation(static_cast<MetalSynchronizedHeapAllocator::AllocatorReservation*>(allocation.rendererInternal));
 }
 
 LatteQueryObject* MetalRenderer::occlusionQuery_create() {
@@ -1556,9 +1651,6 @@ MTL::CommandBuffer* MetalRenderer::GetCommandBuffer()
 
 		m_recordedDrawcalls = 0;
 		m_commitTreshold = m_defaultCommitTreshlod;
-
-		// Notify memory manager about the new command buffer
-        m_memoryManager->GetTemporaryBufferAllocator().SetActiveCommandBuffer(mtlCommandBuffer);
 
         // Debug
         m_performanceMonitor.m_commandBuffers++;
@@ -1740,8 +1832,6 @@ void MetalRenderer::CommitCommandBuffer()
 
         m_executingCommandBuffers.push_back(mtlCommandBuffer);
 
-        m_memoryManager->GetTemporaryBufferAllocator().SetActiveCommandBuffer(nullptr);
-
         // Debug
         //m_commandQueue->insertDebugCaptureBoundary();
     }
@@ -1750,26 +1840,20 @@ void MetalRenderer::CommitCommandBuffer()
 void MetalRenderer::ProcessFinishedCommandBuffers()
 {
     // Check for finished command buffers
-    bool atLeastOneCompleted = false;
     for (auto it = m_executingCommandBuffers.begin(); it != m_executingCommandBuffers.end();)
     {
         auto commandBuffer = *it;
         if (CommandBufferCompleted(commandBuffer))
         {
-            m_memoryManager->GetTemporaryBufferAllocator().CommandBufferFinished(commandBuffer);
-            //commandBuffer->release();
+            m_memoryManager->CleanupBuffers(commandBuffer);
+            commandBuffer->release();
             it = m_executingCommandBuffers.erase(it);
-            atLeastOneCompleted = true;
         }
         else
         {
             ++it;
         }
     }
-
-    // Invalidate indices if at least one command buffer has completed
-    if (atLeastOneCompleted)
-        LatteIndices_invalidateAll();
 }
 
 bool MetalRenderer::AcquireDrawable(bool mainWindow)
@@ -1788,6 +1872,7 @@ bool MetalRenderer::AcquireDrawable(bool mainWindow)
     return layer.AcquireDrawable();
 }
 
+/*
 bool MetalRenderer::CheckIfRenderPassNeedsFlush(LatteDecompilerShader* shader)
 {
     sint32 textureCount = shader->resourceMapping.getTextureCount();
@@ -1796,6 +1881,11 @@ bool MetalRenderer::CheckIfRenderPassNeedsFlush(LatteDecompilerShader* shader)
 		const auto relative_textureUnit = shader->resourceMapping.getTextureUnitFromBindingPoint(i);
 		auto hostTextureUnit = relative_textureUnit;
 		auto textureDim = shader->textureUnitDim[relative_textureUnit];
+
+		// Texture is accessed as a framebuffer fetch, therefore there is no need to flush it
+		if (shader->textureRenderTargetIndex[relative_textureUnit] != 255)
+		    continue;
+
 		auto texUnitRegIndex = hostTextureUnit * 7;
 		switch (shader->shaderType)
 		{
@@ -1820,20 +1910,19 @@ bool MetalRenderer::CheckIfRenderPassNeedsFlush(LatteDecompilerShader* shader)
             continue;
 
 		LatteTexture* baseTexture = textureView->baseTexture;
-		if (!m_state.m_isFirstDrawInRenderPass)
+
+	    // If the texture is also used in the current render pass, we need to end the render pass to "flush" the texture
+		for (uint8 i = 0; i < LATTE_NUM_COLOR_TARGET; i++)
 		{
-		    // If the texture is also used in the current render pass, we need to end the render pass to "flush" the texture
-			for (uint8 i = 0; i < LATTE_NUM_COLOR_TARGET; i++)
-			{
-			    auto colorTarget = m_state.m_activeFBO.m_fbo->colorBuffer[i].texture;
-				if (colorTarget && colorTarget->baseTexture == baseTexture)
-				    return true;
-			}
+		    auto colorTarget = m_state.m_activeFBO.m_fbo->colorBuffer[i].texture;
+			if (colorTarget && colorTarget->baseTexture == baseTexture)
+			    return true;
 		}
 	}
 
 	return false;
 }
+*/
 
 void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandEncoder, LatteDecompilerShader* shader, bool usesGeometryShader)
 {
@@ -1844,6 +1933,11 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
 	{
 		const auto relative_textureUnit = shader->resourceMapping.getTextureUnitFromBindingPoint(i);
 		auto hostTextureUnit = relative_textureUnit;
+
+		// Don't bind textures that are accessed with a framebuffer fetch
+		if (m_supportsFramebufferFetch && shader->textureRenderTargetIndex[relative_textureUnit] != 255)
+            continue;
+
 		auto textureDim = shader->textureUnitDim[relative_textureUnit];
 		auto texUnitRegIndex = hostTextureUnit * 7;
 		switch (shader->shaderType)
@@ -1997,15 +2091,13 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
 			}
 		}
 
-		auto& bufferAllocator = m_memoryManager->GetTemporaryBufferAllocator();
 		size_t size = shader->uniform.uniformRangeSize;
-		auto supportBuffer = bufferAllocator.GetBufferAllocation(size);
-		memcpy(supportBuffer.data, supportBufferData, size);
-		auto buffer = bufferAllocator.GetBuffer(supportBuffer.bufferIndex);
-		//if (!HasUnifiedMemory())
-		//    buffer->didModifyRange(NS::Range(supportBuffer.offset, size));
+		auto& bufferAllocator = m_memoryManager->GetStagingAllocator();
+		auto allocation = bufferAllocator.AllocateBufferMemory(size, 1);
+		memcpy(allocation.memPtr, supportBufferData, size);
+		bufferAllocator.FlushReservation(allocation);
 
-		SetBuffer(renderCommandEncoder, mtlShaderType, buffer, supportBuffer.offset, shader->resourceMapping.uniformVarsBufferBindingPoint);
+		SetBuffer(renderCommandEncoder, mtlShaderType, allocation.mtlBuffer, allocation.bufferOffset, shader->resourceMapping.uniformVarsBufferBindingPoint);
 	}
 
 	// Uniform buffers
@@ -2046,8 +2138,6 @@ void MetalRenderer::ClearColorTextureInternal(MTL::Texture* mtlTexture, sint32 s
     colorAttachment->setSlice(sliceIndex);
     colorAttachment->setLevel(mipIndex);
 
-    MTL::Texture* colorRenderTargets[8] = {nullptr};
-    colorRenderTargets[0] = mtlTexture;
     GetTemporaryRenderCommandEncoder(renderPassDescriptor);
     renderPassDescriptor->release();
     EndEncoding();
@@ -2104,4 +2194,60 @@ void MetalRenderer::EnsureImGuiBackend()
         ImGui_ImplMetal_Init(m_device);
         //ImGui_ImplMetal_CreateFontsTexture(m_device);
     }
+}
+
+void MetalRenderer::StartCapture()
+{
+    auto captureManager = MTL::CaptureManager::sharedCaptureManager();
+    auto desc = MTL::CaptureDescriptor::alloc()->init();
+    desc->setCaptureObject(m_device);
+
+    // Check if a debugger with support for GPU capture is attached
+    if (captureManager->supportsDestination(MTL::CaptureDestinationDeveloperTools))
+    {
+        desc->setDestination(MTL::CaptureDestinationDeveloperTools);
+    }
+    else
+    {
+        if (GetConfig().gpu_capture_dir.GetValue().empty())
+        {
+            cemuLog_log(LogType::Force, "No GPU capture directory specified, cannot do a GPU capture");
+            return;
+        }
+
+        // Check if the GPU trace document destination is available
+        if (!captureManager->supportsDestination(MTL::CaptureDestinationGPUTraceDocument))
+        {
+            cemuLog_log(LogType::Force, "GPU trace document destination is not available, cannot do a GPU capture");
+            return;
+        }
+
+        // Get current date and time as a string
+        auto now = std::chrono::system_clock::now();
+        std::time_t now_time = std::chrono::system_clock::to_time_t(now);
+        std::ostringstream oss;
+        oss << std::put_time(std::localtime(&now_time), "%Y-%m-%d_%H-%M-%S");
+        std::string now_str = oss.str();
+
+        std::string capturePath = fmt::format("{}/cemu_{}.gputrace", GetConfig().gpu_capture_dir.GetValue(), now_str);
+        desc->setDestination(MTL::CaptureDestinationGPUTraceDocument);
+        desc->setOutputURL(ToNSURL(capturePath));
+    }
+
+    NS::Error* error = nullptr;
+    captureManager->startCapture(desc, &error);
+    if (error)
+    {
+        cemuLog_log(LogType::Force, "Failed to start GPU capture: {}", error->localizedDescription()->utf8String());
+    }
+
+    m_capturing = true;
+}
+
+void MetalRenderer::EndCapture()
+{
+    auto captureManager = MTL::CaptureManager::sharedCaptureManager();
+    captureManager->stopCapture();
+
+    m_capturing = false;
 }

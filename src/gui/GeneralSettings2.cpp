@@ -10,6 +10,7 @@
 #include <wx/collpane.h>
 #include <wx/clrpicker.h>
 #include <wx/cshelp.h>
+#include <wx/textctrl.h>
 #include <wx/textdlg.h>
 #include <wx/hyperlink.h>
 
@@ -27,6 +28,9 @@
 
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#if ENABLE_METAL
+#include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
+#endif
 #include "Cafe/Account/Account.h"
 
 #include <boost/tokenizer.hpp>
@@ -92,6 +96,19 @@ public:
 private:
 	VulkanRenderer::DeviceInfo m_device_info;
 };
+
+#if ENABLE_METAL
+class wxMetalUUID : public wxClientData
+{
+public:
+	wxMetalUUID(const MetalRenderer::DeviceInfo& info)
+		: m_device_info(info) {}
+	const MetalRenderer::DeviceInfo& GetDeviceInfo() const { return m_device_info; }
+
+private:
+	MetalRenderer::DeviceInfo m_device_info;
+};
+#endif
 
 class wxAccountData : public wxClientData
 {
@@ -207,8 +224,10 @@ wxPanel* GeneralSettings2::AddGeneralPage(wxNotebook* notebook)
 #if BOOST_OS_MACOS
 			m_disable_screensaver->Enable(false);
 #endif
-
-			// InsertEmptyRow();
+			m_play_boot_sound = new wxCheckBox(box, wxID_ANY, _("Enable intro sound"));
+			m_play_boot_sound->SetToolTip(_("Play bootSound file while compiling shaders/pipelines."));
+			second_row->Add(m_play_boot_sound, 0, botflag, 5);
+			CountRowElement();
 
 			m_auto_update = new wxCheckBox(box, wxID_ANY, _("Automatically check for updates"));
 			m_auto_update->SetToolTip(_("Automatically checks for new cemu versions on startup"));
@@ -876,6 +895,33 @@ wxPanel* GeneralSettings2::AddDebugPage(wxNotebook* notebook)
 		debug_panel_sizer->Add(debug_row, 0, wxALL | wxEXPAND, 5);
 	}
 
+	{
+		auto* debug_row = new wxFlexGridSizer(0, 2, 0, 0);
+		debug_row->SetFlexibleDirection(wxBOTH);
+		debug_row->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+		debug_row->Add(new wxStaticText(panel, wxID_ANY, _("GPU capture save directory"), wxDefaultPosition, wxDefaultSize, 0), 0, wxALIGN_CENTER_VERTICAL | wxALL, 5);
+
+		m_gpu_capture_dir = new wxTextCtrl(panel, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize, wxTE_DONTWRAP);
+		m_gpu_capture_dir->SetMinSize(wxSize(150, -1));
+		m_gpu_capture_dir->SetToolTip(_("Cemu will save the GPU captures done by selecting Debug -> GPU capture in the menu bar in this directory. If a debugger with support for GPU captures (like Xcode) is attached, the capture will be opened in that debugger instead. If such debugger is not attached, METAL_CAPTURE_ENABLED must be set to 1 as an environment variable."));
+
+		debug_row->Add(m_gpu_capture_dir, 0, wxALL | wxEXPAND, 5);
+		debug_panel_sizer->Add(debug_row, 0, wxALL | wxEXPAND, 5);
+	}
+
+	{
+		auto* debug_row = new wxFlexGridSizer(0, 2, 0, 0);
+		debug_row->SetFlexibleDirection(wxBOTH);
+		debug_row->SetNonFlexibleGrowMode(wxFLEX_GROWMODE_SPECIFIED);
+
+		m_framebuffer_fetch = new wxCheckBox(panel, wxID_ANY, _("Framebuffer fetch"));
+		m_framebuffer_fetch->SetToolTip(_("Enable framebuffer fetch for eligible textures on supported devices."));
+
+		debug_row->Add(m_framebuffer_fetch, 0, wxALL | wxEXPAND, 5);
+		debug_panel_sizer->Add(debug_row, 0, wxALL | wxEXPAND, 5);
+	}
+
 	panel->SetSizerAndFit(debug_panel_sizer);
 
 	return panel;
@@ -938,6 +984,7 @@ void GeneralSettings2::StoreConfig()
 #if BOOST_OS_LINUX && defined(ENABLE_FERAL_GAMEMODE)
     config.feral_gamemode = m_feral_gamemode->IsChecked();
 #endif
+	config.play_boot_sound = m_play_boot_sound->IsChecked();
 	config.disable_screensaver = m_disable_screensaver->IsChecked();
 	// Toggle while a game is running
 	if (CafeSystem::IsTitleRunning())
@@ -1023,16 +1070,32 @@ void GeneralSettings2::StoreConfig()
 	config.graphic_api = (GraphicAPI)m_graphic_api->GetSelection();
 
 	selection = m_graphic_device->GetSelection();
-	if(selection != wxNOT_FOUND)
+	if (config.graphic_api == GraphicAPI::kVulkan)
 	{
-		const auto* info = (wxVulkanUUID*)m_graphic_device->GetClientObject(selection);
-		if(info)
-			config.graphic_device_uuid = info->GetDeviceInfo().uuid;
-		else
-			config.graphic_device_uuid = {};
+    	if (selection != wxNOT_FOUND)
+    	{
+    		const auto* info = (wxVulkanUUID*)m_graphic_device->GetClientObject(selection);
+    		if (info)
+    			config.vk_graphic_device_uuid = info->GetDeviceInfo().uuid;
+    		else
+    			config.vk_graphic_device_uuid = {};
+    	}
+    	else
+    		config.vk_graphic_device_uuid = {};
 	}
-	else
-		config.graphic_device_uuid = {};
+	else if (config.graphic_api == GraphicAPI::kMetal)
+	{
+        if (selection != wxNOT_FOUND)
+    	{
+    		const auto* info = (wxMetalUUID*)m_graphic_device->GetClientObject(selection);
+    		if (info)
+    			config.mtl_graphic_device_uuid = info->GetDeviceInfo().uuid;
+    		else
+    			config.mtl_graphic_device_uuid = {};
+    	}
+    	else
+    		config.mtl_graphic_device_uuid = {};
+	}
 
 
 	config.vsync = m_vsync->GetSelection();
@@ -1069,6 +1132,8 @@ void GeneralSettings2::StoreConfig()
 	// debug
 	config.crash_dump = (CrashDump)m_crash_dump->GetSelection();
 	config.gdb_port = m_gdb_port->GetValue();
+	config.gpu_capture_dir = m_gpu_capture_dir->GetValue().utf8_string();
+	config.framebuffer_fetch = m_framebuffer_fetch->IsChecked();
 
 	g_config.Save();
 }
@@ -1545,7 +1610,7 @@ void GeneralSettings2::HandleGraphicsApiSelection()
 			const auto& config = GetConfig();
 			for(size_t i = 0; i < devices.size(); ++i)
 			{
-				if(config.graphic_device_uuid == devices[i].uuid)
+				if(config.vk_graphic_device_uuid == devices[i].uuid)
 				{
 					m_graphic_device->SetSelection(i);
 					break;
@@ -1566,9 +1631,29 @@ void GeneralSettings2::HandleGraphicsApiSelection()
 
 		m_vsync->Select(selection);
 
-		// TODO: add an option to select the graphic device
-    	m_graphic_device->Clear();
-    	m_graphic_device->Disable();
+		m_graphic_device->Enable();
+		auto devices = MetalRenderer::GetDevices();
+		m_graphic_device->Clear();
+#if ENABLE_METAL
+		if(!devices.empty())
+		{
+			for (const auto& device : devices)
+			{
+				m_graphic_device->Append(device.name, new wxMetalUUID(device));
+			}
+			m_graphic_device->SetSelection(0);
+
+			const auto& config = GetConfig();
+			for (size_t i = 0; i < devices.size(); ++i)
+			{
+				if (config.mtl_graphic_device_uuid == devices[i].uuid)
+				{
+					m_graphic_device->SetSelection(i);
+					break;
+				}
+			}
+		}
+#endif
 	}
 }
 
@@ -1593,6 +1678,7 @@ void GeneralSettings2::ApplyConfig()
 	m_save_screenshot->SetValue(config.save_screenshot);
 
 	m_disable_screensaver->SetValue(config.disable_screensaver);
+	m_play_boot_sound->SetValue(config.play_boot_sound);
 #if BOOST_OS_LINUX && defined(ENABLE_FERAL_GAMEMODE)
     	m_feral_gamemode->SetValue(config.feral_gamemode);
 #endif
@@ -1742,6 +1828,8 @@ void GeneralSettings2::ApplyConfig()
 	// debug
 	m_crash_dump->SetSelection((int)config.crash_dump.GetValue());
 	m_gdb_port->SetValue(config.gdb_port.GetValue());
+	m_gpu_capture_dir->SetValue(wxHelper::FromUtf8(config.gpu_capture_dir.GetValue()));
+	m_framebuffer_fetch->SetValue(config.framebuffer_fetch);
 }
 
 void GeneralSettings2::OnAudioAPISelected(wxCommandEvent& event)
@@ -1795,20 +1883,7 @@ void GeneralSettings2::UpdateAudioDevice()
 				if (m_game_launched && g_tvAudio)
 					channels = g_tvAudio->GetChannels();
 				else
-				{
-					switch (config.tv_channels)
-					{
-					case 0:
-						channels = 1;
-						break;
-					case 2:
-						channels = 6;
-						break;
-					default: // stereo
-						channels = 2;
-						break;
-					}
-				}
+					channels = CemuConfig::AudioChannelsToNChannels(config.tv_channels);
 
 				try
 				{
@@ -1843,20 +1918,7 @@ void GeneralSettings2::UpdateAudioDevice()
 				if (m_game_launched && g_padAudio)
 					channels = g_padAudio->GetChannels();
 				else
-				{
-					switch (config.pad_channels)
-					{
-					case 0:
-						channels = 1;
-						break;
-					case 2:
-						channels = 6;
-						break;
-					default: // stereo
-						channels = 2;
-						break;
-					}
-				}
+					channels = CemuConfig::AudioChannelsToNChannels(config.pad_channels);
 
 				try
 				{
@@ -1892,20 +1954,7 @@ void GeneralSettings2::UpdateAudioDevice()
 				if (m_game_launched && g_inputAudio)
 					channels = g_inputAudio->GetChannels();
 				else
-				{
-					switch (config.input_channels)
-					{
-					case 0:
-						channels = 1;
-						break;
-					case 2:
-						channels = 6;
-						break;
-					default: // stereo
-						channels = 2;
-						break;
-					}
-				}
+					channels = CemuConfig::AudioChannelsToNChannels(config.input_channels);
 
 				try
 				{

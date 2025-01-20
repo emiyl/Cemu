@@ -6,20 +6,6 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalPerformanceMonitor.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalOutputShaderCache.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalAttachmentsInfo.h"
-#include <cstdint>
-
-struct MetalBufferAllocation
-{
-    void* data;
-    uint32 bufferIndex;
-    size_t offset = INVALID_OFFSET;
-    size_t size;
-
-    bool IsValid() const
-    {
-        return offset != INVALID_OFFSET;
-    }
-};
 
 enum MetalGeneralShaderType
 {
@@ -126,8 +112,7 @@ struct MetalState
     MetalActiveFBOState m_lastUsedFBO;
 
     size_t m_vertexBufferOffsets[MAX_MTL_VERTEX_BUFFERS];
-    // TODO: find out what is the max number of bound textures on the Wii U
-    class LatteTextureViewMtl* m_textures[64] = {nullptr};
+    class LatteTextureViewMtl* m_textures[LATTE_NUM_MAX_TEX_UNITS * 3] = {nullptr};
     size_t m_uniformBufferOffsets[METAL_GENERAL_SHADER_TYPE_TOTAL][MAX_MTL_BUFFERS];
 
     MTL::Viewport m_viewport;
@@ -155,6 +140,14 @@ class MetalRenderer : public Renderer
 public:
     static constexpr uint32 OCCLUSION_QUERY_POOL_SIZE = 1024;
     static constexpr uint32 TEXTURE_READBACK_SIZE = 32 * 1024 * 1024; // 32 MB
+
+    struct DeviceInfo
+    {
+        std::string name;
+        uint64 uuid;
+    };
+
+    static std::vector<DeviceInfo> GetDevices();
 
     MetalRenderer();
 	~MetalRenderer() override;
@@ -265,8 +258,9 @@ public:
 	void draw_handleSpecialState5();
 
 	// index
-	void* indexData_reserveIndexMemory(uint32 size, uint32& offset, uint32& bufferIndex) override;
-	void indexData_uploadIndexMemory(uint32 bufferIndex, uint32 offset, uint32 size) override;
+	IndexAllocation indexData_reserveIndexMemory(uint32 size) override;
+	void indexData_releaseIndexMemory(IndexAllocation& allocation) override;
+	void indexData_uploadIndexMemory(IndexAllocation& allocation) override;
 
 	// occlusion queries
 	LatteQueryObject* occlusionQuery_create() override;
@@ -277,19 +271,25 @@ public:
 	// Helpers
 	MetalPerformanceMonitor& GetPerformanceMonitor() { return m_performanceMonitor; }
 
+	void SetShouldMaximizeConcurrentCompilation(bool shouldMaximizeConcurrentCompilation)
+	{
+	    if (m_supportsMetal3)
+	        m_device->setShouldMaximizeConcurrentCompilation(shouldMaximizeConcurrentCompilation);
+	}
+
 	bool IsCommandBufferActive() const
 	{
         return (m_currentCommandBuffer.m_commandBuffer && !m_currentCommandBuffer.m_commited);
     }
 
-	MTL::CommandBuffer* GetCurrentCommandBuffer()
+	MTL::CommandBuffer* GetCurrentCommandBuffer() const
     {
         cemu_assert_debug(m_currentCommandBuffer.m_commandBuffer);
 
         return m_currentCommandBuffer.m_commandBuffer;
     }
 
-    MTL::CommandBuffer* GetAndRetainCurrentCommandBufferIfNotCompleted()
+    MTL::CommandBuffer* GetAndRetainCurrentCommandBufferIfNotCompleted() const
     {
         // The command buffer has been commited and has finished execution
         if (m_currentCommandBuffer.m_commited && m_executingCommandBuffers.size() == 0)
@@ -350,7 +350,7 @@ public:
 
     bool AcquireDrawable(bool mainWindow);
 
-    bool CheckIfRenderPassNeedsFlush(LatteDecompilerShader* shader);
+    //bool CheckIfRenderPassNeedsFlush(LatteDecompilerShader* shader);
     void BindStageResources(MTL::RenderCommandEncoder* renderCommandEncoder, LatteDecompilerShader* shader, bool usesGeometryShader);
 
     void ClearColorTextureInternal(MTL::Texture* mtlTexture, sint32 sliceIndex, sint32 mipIndex, float r, float g, float b, float a);
@@ -361,6 +361,11 @@ public:
     bool IsAppleGPU() const
     {
         return m_isAppleGPU;
+    }
+
+    bool SupportsFramebufferFetch() const
+    {
+        return m_supportsFramebufferFetch;
     }
 
     bool HasUnifiedMemory() const
@@ -447,6 +452,12 @@ public:
         m_occlusionQuery.m_lastCommandBuffer = GetAndRetainCurrentCommandBufferIfNotCompleted();
     }
 
+    // GPU capture
+    void CaptureFrame()
+    {
+        m_captureFrame = true;
+    }
+
 private:
 	MetalLayerHandle m_mainLayer;
 	MetalLayerHandle m_padLayer;
@@ -454,11 +465,12 @@ private:
 	MetalPerformanceMonitor m_performanceMonitor;
 
 	// Metal objects
-	MTL::Device* m_device;
+	MTL::Device* m_device = nullptr;
 	MTL::CommandQueue* m_commandQueue;
 
 	// Feature support
 	bool m_isAppleGPU;
+	bool m_supportsFramebufferFetch;
 	bool m_hasUnifiedMemory;
 	bool m_supportsMetal3;
 	uint32 m_recommendedMaxVRAMUsage;
@@ -520,6 +532,11 @@ private:
 	// State
 	MetalState m_state;
 
+	// GPU capture
+	bool m_captureFrame = false;
+	bool m_capturing = false;
+
+	// Helpers
 	MetalLayerHandle& GetLayer(bool mainWindow)
 	{
 	    return (mainWindow ? m_mainLayer : m_padLayer);
@@ -528,4 +545,8 @@ private:
 	void SwapBuffer(bool mainWindow);
 
 	void EnsureImGuiBackend();
+
+	// GPU capture
+	void StartCapture();
+	void EndCapture();
 };

@@ -43,6 +43,7 @@ private:
 	wxCheckBox* m_discord_presence, *m_fullscreen_menubar;
 	wxCheckBox* m_auto_update, *m_receive_untested_releases, *m_save_screenshot;
 	wxCheckBox* m_disable_screensaver;
+	wxCheckBox* m_play_boot_sound;
 #if BOOST_OS_LINUX && defined(ENABLE_FERAL_GAMEMODE)
    	wxCheckBox* m_feral_gamemode;
 #endif
@@ -78,6 +79,8 @@ private:
 	// Debug
 	wxChoice* m_crash_dump;
 	wxSpinCtrl* m_gdb_port;
+	wxTextCtrl* m_gpu_capture_dir;
+	wxCheckBox* m_framebuffer_fetch;
 
 	void OnAccountCreate(wxCommandEvent& event);
 	void OnAccountDelete(wxCommandEvent& event);
