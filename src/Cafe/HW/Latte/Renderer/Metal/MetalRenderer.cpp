@@ -17,10 +17,10 @@
 #include "Cafe/HW/Latte/Core/LatteShader.h"
 #include "Cafe/HW/Latte/Core/LatteIndices.h"
 #include "Cafe/HW/Latte/Core/LatteBufferCache.h"
+#include "CafeSystem.h"
 #include "Cemu/Logging/CemuLogging.h"
 #include "Cafe/HW/Latte/Core/FetchShader.h"
 #include "Cafe/HW/Latte/Core/LatteConst.h"
-#include "HW/Latte/Renderer/Metal/MetalBufferAllocator.h"
 #include "HW/Latte/Renderer/Metal/MetalCommon.h"
 #include "config/CemuConfig.h"
 #include "gui/guiWrapper.h"
@@ -40,7 +40,7 @@ void LatteDraw_handleSpecialState8_clearAsDepth();
 
 std::vector<MetalRenderer::DeviceInfo> MetalRenderer::GetDevices()
 {
-    auto devices = MTL::CopyAllDevices();
+    NS_STACK_SCOPED auto devices = MTL::CopyAllDevices();
     std::vector<MetalRenderer::DeviceInfo> result;
     result.reserve(devices->count());
     for (uint32 i = 0; i < devices->count(); i++)
@@ -54,6 +54,75 @@ std::vector<MetalRenderer::DeviceInfo> MetalRenderer::GetDevices()
 
 MetalRenderer::MetalRenderer()
 {
+    // Options
+
+    // Position invariance
+    switch (g_current_game_profile->GetPositionInvariance())
+    {
+    case PositionInvariance::Auto:
+        switch (CafeSystem::GetForegroundTitleId())
+        {
+        // Bayonetta
+        case 0x0005000010157F00: // EUR
+        case 0x0005000010157E00: // USA
+        case 0x000500001014DB00: // JPN
+        // Bayonetta 2
+        case 0x0005000010172700: // EUR
+        case 0x0005000010172600: // USA
+        // Disney Planes
+        case 0x0005000010136900: // EUR
+        case 0x0005000010136A00: // EUR (TODO: check)
+        case 0x0005000010136B00: // EUR (TODO: check)
+        case 0x000500001011C500: // USA (TODO: check)
+        // LEGO STAR WARS: The Force Awakens
+        case 0x00050000101DAA00: // EUR
+        case 0x00050000101DAB00: // USA
+        // Mario Kart 8
+        case 0x000500001010ED00: // EUR
+        case 0x000500001010EC00: // USA
+        case 0x000500001010EB00: // JPN
+        case 0x0005000010183A00: // JPN (TODO: check)
+        // Minecraft: Story Mode
+        case 0x000500001020A300: // EUR
+        case 0x00050000101E0100: // USA
+        //case 0x000500001020a200: // USA
+        // Ninja Gaiden 3: Razor's Edge
+        case 0x0005000010110B00: // EUR
+        case 0x0005000010139B00: // EUR (TODO: check)
+        case 0x0005000010110A00: // USA
+        case 0x0005000010110900: // JPN
+        // Resident Evil: Revelations
+        case 0x000500001012B400: // EUR
+        case 0x000500001012CF00: // USA
+        // Star Fox Zero
+        case 0x00050000101B0500: // EUR
+        case 0x0005000010201C00: // EUR (TODO: check)
+        case 0x00050000101B0400: // USA
+        case 0x0005000010201B00: // USA (TODO: check)
+        // The Legend of Zelda: Breath of the Wild
+        case 0x00050000101C9500: // EUR
+        case 0x00050000101C9400: // USA
+        case 0x00050000101C9300: // JPN
+        // Wonderful 101
+        case 0x0005000010135300: // EUR
+        case 0x000500001012DC00: // USA
+        case 0x0005000010116300: // JPN
+        case 0x0005000010185600: // JPN (TODO: check)
+            m_positionInvariance = true;
+            break;
+        default:
+            m_positionInvariance = false;
+            break;
+        }
+        break;
+    case PositionInvariance::False:
+        m_positionInvariance = false;
+        break;
+    case PositionInvariance::True:
+        m_positionInvariance = true;
+        break;
+    }
+
     // Pick a device
     auto& config = GetConfig();
     const bool hasDeviceSet = config.mtl_graphic_device_uuid != 0;
@@ -61,7 +130,7 @@ MetalRenderer::MetalRenderer()
     // If a device is set, try to find it
     if (hasDeviceSet)
     {
-        auto devices = MTL::CopyAllDevices();
+        NS_STACK_SCOPED auto devices = MTL::CopyAllDevices();
         for (uint32 i = 0; i < devices->count(); i++)
         {
             MTL::Device* device = static_cast<MTL::Device*>(devices->object(i));
@@ -84,6 +153,19 @@ MetalRenderer::MetalRenderer()
         m_device = MTL::CreateSystemDefaultDevice();
     }
 
+    // Vendor
+    const char* deviceName = m_device->name()->utf8String();
+    if (memcmp(deviceName, "Apple", 5) == 0)
+        m_vendor = GfxVendor::Apple;
+    else if (memcmp(deviceName, "AMD", 3) == 0)
+        m_vendor = GfxVendor::AMD;
+    else if (memcmp(deviceName, "Intel", 5) == 0)
+        m_vendor = GfxVendor::Intel;
+    else if (memcmp(deviceName, "NVIDIA", 6) == 0)
+        m_vendor = GfxVendor::Nvidia;
+    else
+        m_vendor = GfxVendor::Generic;
+
     // Feature support
     m_isAppleGPU = m_device->supportsFamily(MTL::GPUFamilyApple1);
     m_supportsFramebufferFetch = GetConfig().framebuffer_fetch.GetValue() ? m_device->supportsFamily(MTL::GPUFamilyApple2) : false;
@@ -101,7 +183,7 @@ MetalRenderer::MetalRenderer()
     m_event = m_device->newEvent();
 
     // Resources
-    MTL::SamplerDescriptor* samplerDescriptor = MTL::SamplerDescriptor::alloc()->init();
+    NS_STACK_SCOPED MTL::SamplerDescriptor* samplerDescriptor = MTL::SamplerDescriptor::alloc()->init();
 #ifdef CEMU_DEBUG_ASSERT
     samplerDescriptor->setLabel(GetLabel("Nearest sampler state", samplerDescriptor));
 #endif
@@ -113,10 +195,9 @@ MetalRenderer::MetalRenderer()
     samplerDescriptor->setLabel(GetLabel("Linear sampler state", samplerDescriptor));
 #endif
     m_linearSampler = m_device->newSamplerState(samplerDescriptor);
-    samplerDescriptor->release();
 
     // Null resources
-    MTL::TextureDescriptor* textureDescriptor = MTL::TextureDescriptor::alloc()->init();
+    NS_STACK_SCOPED MTL::TextureDescriptor* textureDescriptor = MTL::TextureDescriptor::alloc()->init();
     textureDescriptor->setTextureType(MTL::TextureType1D);
     textureDescriptor->setWidth(1);
     textureDescriptor->setUsage(MTL::TextureUsageShaderRead);
@@ -132,7 +213,6 @@ MetalRenderer::MetalRenderer()
 #ifdef CEMU_DEBUG_ASSERT
     m_nullTexture2D->setLabel(GetLabel("Null texture 2D", m_nullTexture2D));
 #endif
-    textureDescriptor->release();
 
     m_memoryManager = new MetalMemoryManager(this);
     m_outputShaderCache = new MetalOutputShaderCache(this);
@@ -167,27 +247,23 @@ MetalRenderer::MetalRenderer()
 
     // Create the library
     NS::Error* error = nullptr;
-	MTL::Library* utilityLibrary = m_device->newLibrary(ToNSString(utilityShaderSource), nullptr, &error);
+	NS_STACK_SCOPED MTL::Library* utilityLibrary = m_device->newLibrary(ToNSString(utilityShaderSource), nullptr, &error);
 	if (error)
     {
         cemuLog_log(LogType::Force, "failed to create utility library (error: {})", error->localizedDescription()->utf8String());
     }
 
     // Pipelines
-    MTL::Function* vertexFullscreenFunction = utilityLibrary->newFunction(ToNSString("vertexFullscreen"));
-    MTL::Function* fragmentCopyDepthToColorFunction = utilityLibrary->newFunction(ToNSString("fragmentCopyDepthToColor"));
+    NS_STACK_SCOPED MTL::Function* vertexFullscreenFunction = utilityLibrary->newFunction(ToNSString("vertexFullscreen"));
+    NS_STACK_SCOPED MTL::Function* fragmentCopyDepthToColorFunction = utilityLibrary->newFunction(ToNSString("fragmentCopyDepthToColor"));
 
     m_copyDepthToColorDesc = MTL::RenderPipelineDescriptor::alloc()->init();
     m_copyDepthToColorDesc->setVertexFunction(vertexFullscreenFunction);
     m_copyDepthToColorDesc->setFragmentFunction(fragmentCopyDepthToColorFunction);
-    vertexFullscreenFunction->release();
-    fragmentCopyDepthToColorFunction->release();
 
     // Void vertex pipelines
     if (m_isAppleGPU)
         m_copyBufferToBufferPipeline = new MetalVoidVertexPipeline(this, utilityLibrary, "vertexCopyBufferToBuffer");
-
-    utilityLibrary->release();
 
     // HACK: for some reason, this variable ends up being initialized to some garbage data, even though its declared as bool m_captureFrame = false;
     m_occlusionQuery.m_lastCommandBuffer = nullptr;
@@ -348,13 +424,12 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 	uint32 bytesPerRow = GetMtlTextureBytesPerRow(texMtl->format, texMtl->isDepth, width);
 	uint32 size = GetMtlTextureBytesPerImage(texMtl->format, texMtl->isDepth, height, bytesPerRow);
 
-	// TODO: get a buffer from the memory manager
-	MTL::Buffer* buffer = m_device->newBuffer(size, MTL::ResourceStorageModeShared);
-
 	auto blitCommandEncoder = GetBlitCommandEncoder();
-	blitCommandEncoder->copyFromTexture(texMtl->GetTexture(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), buffer, 0, bytesPerRow, 0);
 
-	uint8* bufferPtr = (uint8*)buffer->contents();
+	auto& bufferAllocator = m_memoryManager->GetStagingAllocator();
+	auto buffer = bufferAllocator.AllocateBufferMemory(size, 1);
+
+	blitCommandEncoder->copyFromTexture(texMtl->GetTexture(), 0, 0, MTL::Origin(0, 0, 0), MTL::Size(width, height, 1), buffer.mtlBuffer, buffer.bufferOffset, bytesPerRow, 0);
 
 	bool formatValid = true;
 	std::vector<uint8> rgb_data;
@@ -365,7 +440,7 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 	switch (pixelFormat)
 	{
 	case MTL::PixelFormatRGBA8Unorm:
-		for (auto ptr = bufferPtr; ptr < bufferPtr + size; ptr += 4)
+		for (auto ptr = buffer.memPtr; ptr < buffer.memPtr + size; ptr += 4)
 		{
 			rgb_data.emplace_back(*ptr);
 			rgb_data.emplace_back(*(ptr + 1));
@@ -373,7 +448,7 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 		}
 		break;
 	case MTL::PixelFormatRGBA8Unorm_sRGB:
-		for (auto ptr = bufferPtr; ptr < bufferPtr + size; ptr += 4)
+		for (auto ptr = buffer.memPtr; ptr < buffer.memPtr + size; ptr += 4)
 		{
 			rgb_data.emplace_back(SRGBComponentToRGB(*ptr));
 			rgb_data.emplace_back(SRGBComponentToRGB(*(ptr + 1)));
@@ -385,8 +460,6 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 		formatValid = false;
 		break;
 	}
-
-	buffer->release();
 
 	if (formatValid)
 		SaveScreenshot(rgb_data, width, height, !padView);
@@ -404,14 +477,13 @@ void MetalRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutput
     // Create render pass
     auto& layer = GetLayer(!padView);
 
-    MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+    NS_STACK_SCOPED MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     auto colorAttachment = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachment->setTexture(layer.GetDrawable()->texture());
     colorAttachment->setLoadAction(clearBackground ? MTL::LoadActionClear : MTL::LoadActionLoad);
     colorAttachment->setStoreAction(MTL::StoreActionStore);
 
     auto renderCommandEncoder = GetTemporaryRenderCommandEncoder(renderPassDescriptor);
-    renderPassDescriptor->release();
 
     // Get a render pipeline
 
@@ -491,7 +563,7 @@ bool MetalRenderer::ImguiBegin(bool mainWindow)
 	auto& layer = GetLayer(mainWindow);
 
 	// Render pass descriptor
-	MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+	NS_STACK_SCOPED MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     auto colorAttachment = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachment->setTexture(layer.GetDrawable()->texture());
     colorAttachment->setLoadAction(MTL::LoadActionLoad);
@@ -504,7 +576,6 @@ bool MetalRenderer::ImguiBegin(bool mainWindow)
 
 	if (m_encoderType != MetalEncoderType::Render)
 	    GetTemporaryRenderCommandEncoder(renderPassDescriptor);
-	renderPassDescriptor->release();
 
 	return true;
 }
@@ -539,7 +610,7 @@ ImTextureID MetalRenderer::GenerateTexture(const std::vector<uint8>& data, const
 			tmp[(i * 4) + 3] = 0xFF;
 		}
 
-		MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
+		NS_STACK_SCOPED MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
 		desc->setTextureType(MTL::TextureType2D);
 		desc->setPixelFormat(MTL::PixelFormatRGBA8Unorm);
 		desc->setWidth(size.x);
@@ -548,7 +619,6 @@ ImTextureID MetalRenderer::GenerateTexture(const std::vector<uint8>& data, const
 		desc->setUsage(MTL::TextureUsageShaderRead);
 
 		MTL::Texture* texture = m_device->newTexture(desc);
-		desc->release();
 
 		// TODO: do a GPU copy?
 		texture->replaceRegion(MTL::Region(0, 0, size.x, size.y), 0, 0, tmp.data(), size.x * 4, 0);
@@ -647,6 +717,7 @@ void MetalRenderer::rendertarget_deleteCachedFBO(LatteCachedFBO* cfbo)
 void MetalRenderer::rendertarget_bindFramebufferObject(LatteCachedFBO* cfbo)
 {
 	m_state.m_activeFBO = {(CachedFBOMtl*)cfbo, MetalAttachmentsInfo((CachedFBOMtl*)cfbo)};
+	m_state.m_fboChanged = true;
 }
 
 void* MetalRenderer::texture_acquireTextureUploadBuffer(uint32 size)
@@ -702,11 +773,8 @@ void MetalRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, s
     // Allocate a temporary buffer
     auto& bufferAllocator = m_memoryManager->GetStagingAllocator();
     auto allocation = bufferAllocator.AllocateBufferMemory(compressedImageSize, 1);
-    bufferAllocator.FlushReservation(allocation);
-
-    // Copy the data to the temporary buffer
     memcpy(allocation.memPtr, pixelData, compressedImageSize);
-    //buffer->didModifyRange(NS::Range(allocation.offset, allocation.size));
+    bufferAllocator.FlushReservation(allocation);
 
     // TODO: specify blit options when copying to a depth stencil texture?
     // Copy the data from the temporary buffer to the texture
@@ -738,7 +806,7 @@ void MetalRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sl
 
     auto mtlTexture = static_cast<LatteTextureMtl*>(hostTexture)->GetTexture();
 
-    MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+    NS_STACK_SCOPED MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     if (clearDepth)
     {
         auto depthAttachment = renderPassDescriptor->depthAttachment();
@@ -761,7 +829,6 @@ void MetalRenderer::texture_clearDepthSlice(LatteTexture* hostTexture, uint32 sl
     }
 
     GetTemporaryRenderCommandEncoder(renderPassDescriptor);
-    renderPassDescriptor->release();
     EndEncoding();
 
     // Debug
@@ -998,15 +1065,7 @@ void MetalRenderer::draw_beginSequence()
 	LatteRenderTarget_updateViewport();
 	LatteRenderTarget_updateScissorBox();
 
-	// check for conditions which would turn the drawcalls into no-ops
-	bool rasterizerEnable = !LatteGPUState.contextNew.PA_CL_CLIP_CNTL.get_DX_RASTERIZATION_KILL();
-
-	// GX2SetSpecialState(0, true) enables DX_RASTERIZATION_KILL, but still expects depth writes to happen? -> Research which stages are disabled by DX_RASTERIZATION_KILL exactly
-	// for now we use a workaround:
-	if (!LatteGPUState.contextNew.PA_CL_VTE_CNTL.get_VPORT_X_OFFSET_ENA())
-		rasterizerEnable = true;
-
-	if (!rasterizerEnable && !streamoutEnable)
+	if (!LatteGPUState.contextNew.IsRasterizationEnabled() && !streamoutEnable)
 		m_state.m_skipDrawSequence = true;
 }
 
@@ -1073,7 +1132,7 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
 	*/
 
     // Primitive type
-    const LattePrimitiveMode primitiveMode = static_cast<LattePrimitiveMode>(LatteGPUState.contextRegister[mmVGT_PRIMITIVE_TYPE]);
+    const LattePrimitiveMode primitiveMode = LatteGPUState.contextNew.VGT_PRIMITIVE_TYPE.get_PRIMITIVE_MODE();
     auto mtlPrimitiveType = GetMtlPrimitiveType(primitiveMode);
     bool isPrimitiveRect = (primitiveMode == Latte::LATTE_VGT_PRIMITIVE_TYPE::E_PRIMITIVE_TYPE::RECTS);
 
@@ -1335,25 +1394,14 @@ void MetalRenderer::draw_execute(uint32 baseVertex, uint32 baseInstance, uint32 
 		renderCommandEncoder->setObjectBytes(&hostIndexTypeU8, sizeof(hostIndexTypeU8), vertexShader->resourceMapping.indexTypeBinding);
         encoderState.m_buffers[METAL_SHADER_TYPE_OBJECT][vertexShader->resourceMapping.indexTypeBinding] = {nullptr};
 
-		uint32 verticesPerPrimitive = 0;
-		switch (primitiveMode)
-        {
-        case LattePrimitiveMode::POINTS:
-            verticesPerPrimitive = 1;
-            break;
-        case LattePrimitiveMode::LINES:
-            verticesPerPrimitive = 2;
-            break;
-        case LattePrimitiveMode::TRIANGLES:
-        case LattePrimitiveMode::RECTS:
-            verticesPerPrimitive = 3;
-            break;
-        default:
-            cemuLog_log(LogType::Force, "unimplemented geometry shader primitive mode {}", (uint32)primitiveMode);
-            break;
-        }
+		uint32 verticesPerPrimitive = GetVerticesPerPrimitive(primitiveMode);
+		uint32 threadgroupCount = count * instanceCount;
+		if (PrimitiveRequiresConnection(primitiveMode))
+		    threadgroupCount -= verticesPerPrimitive - 1;
+		else
+		    threadgroupCount /= verticesPerPrimitive;
 
-		renderCommandEncoder->drawMeshThreadgroups(MTL::Size(count * instanceCount / verticesPerPrimitive, 1, 1), MTL::Size(verticesPerPrimitive, 1, 1), MTL::Size(1, 1, 1));
+		renderCommandEncoder->drawMeshThreadgroups(MTL::Size(threadgroupCount, 1, 1), MTL::Size(verticesPerPrimitive, 1, 1), MTL::Size(1, 1, 1));
 	}
 	else
 	{
@@ -1685,6 +1733,9 @@ MTL::RenderCommandEncoder* MetalRenderer::GetTemporaryRenderCommandEncoder(MTL::
 // Some render passes clear the attachments, forceRecreate is supposed to be used in those cases
 MTL::RenderCommandEncoder* MetalRenderer::GetRenderCommandEncoder(bool forceRecreate)
 {
+    bool fboChanged = m_state.m_fboChanged;
+    m_state.m_fboChanged = false;
+
     // Check if we need to begin a new render pass
     if (m_commandEncoder)
     {
@@ -1692,24 +1743,28 @@ MTL::RenderCommandEncoder* MetalRenderer::GetRenderCommandEncoder(bool forceRecr
         {
             if (m_encoderType == MetalEncoderType::Render)
             {
-                bool needsNewRenderPass = (m_state.m_lastUsedFBO.m_fbo == nullptr);
-                if (!needsNewRenderPass)
+                bool needsNewRenderPass = false;
+                if (fboChanged)
                 {
-                    for (uint8 i = 0; i < 8; i++)
+                    needsNewRenderPass = (m_state.m_lastUsedFBO.m_fbo == nullptr);
+                    if (!needsNewRenderPass)
                     {
-                        if (m_state.m_activeFBO.m_fbo->colorBuffer[i].texture && m_state.m_activeFBO.m_fbo->colorBuffer[i].texture != m_state.m_lastUsedFBO.m_fbo->colorBuffer[i].texture)
+                        for (uint8 i = 0; i < 8; i++)
                         {
-                            needsNewRenderPass = true;
-                            break;
+                            if (m_state.m_activeFBO.m_fbo->colorBuffer[i].texture && m_state.m_activeFBO.m_fbo->colorBuffer[i].texture != m_state.m_lastUsedFBO.m_fbo->colorBuffer[i].texture)
+                            {
+                                needsNewRenderPass = true;
+                                break;
+                            }
                         }
                     }
-                }
 
-                if (!needsNewRenderPass)
-                {
-                    if (m_state.m_activeFBO.m_fbo->depthBuffer.texture && (m_state.m_activeFBO.m_fbo->depthBuffer.texture != m_state.m_lastUsedFBO.m_fbo->depthBuffer.texture || ( m_state.m_activeFBO.m_fbo->depthBuffer.hasStencil && !m_state.m_lastUsedFBO.m_fbo->depthBuffer.hasStencil)))
+                    if (!needsNewRenderPass)
                     {
-                        needsNewRenderPass = true;
+                        if (m_state.m_activeFBO.m_fbo->depthBuffer.texture && (m_state.m_activeFBO.m_fbo->depthBuffer.texture != m_state.m_lastUsedFBO.m_fbo->depthBuffer.texture || ( m_state.m_activeFBO.m_fbo->depthBuffer.hasStencil && !m_state.m_lastUsedFBO.m_fbo->depthBuffer.hasStencil)))
+                        {
+                            needsNewRenderPass = true;
+                        }
                     }
                 }
 
@@ -1795,7 +1850,7 @@ void MetalRenderer::EndEncoding()
     if (m_commandEncoder)
     {
         m_commandEncoder->endEncoding();
-        //m_commandEncoder->release();
+        m_commandEncoder->release();
         m_commandEncoder = nullptr;
         m_encoderType = MetalEncoderType::None;
 
@@ -1994,8 +2049,22 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
 		MTL::SamplerState* sampler;
 		if (stageSamplerIndex != LATTE_DECOMPILER_SAMPLER_NONE)
 		{
-    		uint32 samplerIndex = stageSamplerIndex + LatteDecompiler_getTextureSamplerBaseIndex(shader->shaderType);
-    		sampler = m_samplerCache->GetSamplerState(LatteGPUState.contextNew, samplerIndex);
+		    uint32 samplerIndex = stageSamplerIndex + LatteDecompiler_getTextureSamplerBaseIndex(shader->shaderType);
+			_LatteRegisterSetSampler* samplerWords = LatteGPUState.contextNew.SQ_TEX_SAMPLER + samplerIndex;
+
+			// Overwriting
+
+            // Lod bias
+            //if (baseTexture->overwriteInfo.hasLodBias)
+            //    samplerWords->WORD1.set_LOD_BIAS(baseTexture->overwriteInfo.lodBias);
+            //else if (baseTexture->overwriteInfo.hasRelativeLodBias)
+            //    samplerWords->WORD1.set_LOD_BIAS(samplerWords->WORD1.get_LOD_BIAS() + baseTexture->overwriteInfo.relativeLodBias);
+
+            // Max anisotropy
+            if (baseTexture->overwriteInfo.anisotropicLevel >= 0)
+                samplerWords->WORD0.set_MAX_ANISO_RATIO(baseTexture->overwriteInfo.anisotropicLevel);
+
+    		sampler = m_samplerCache->GetSamplerState(LatteGPUState.contextNew, shader->shaderType, stageSamplerIndex, samplerWords);
 		}
 		else
 		{
@@ -2129,7 +2198,7 @@ void MetalRenderer::BindStageResources(MTL::RenderCommandEncoder* renderCommandE
 
 void MetalRenderer::ClearColorTextureInternal(MTL::Texture* mtlTexture, sint32 sliceIndex, sint32 mipIndex, float r, float g, float b, float a)
 {
-    MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
+    NS_STACK_SCOPED MTL::RenderPassDescriptor* renderPassDescriptor = MTL::RenderPassDescriptor::alloc()->init();
     auto colorAttachment = renderPassDescriptor->colorAttachments()->object(0);
     colorAttachment->setTexture(mtlTexture);
     colorAttachment->setClearColor(MTL::ClearColor(r, g, b, a));
@@ -2139,7 +2208,6 @@ void MetalRenderer::ClearColorTextureInternal(MTL::Texture* mtlTexture, sint32 s
     colorAttachment->setLevel(mipIndex);
 
     GetTemporaryRenderCommandEncoder(renderPassDescriptor);
-    renderPassDescriptor->release();
     EndEncoding();
 
     // Debug

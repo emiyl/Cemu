@@ -1,6 +1,81 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalSamplerCache.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
-#include "HW/Latte/Renderer/Metal/LatteToMtl.h"
+#include "Cafe/HW/Latte/Core/LatteShader.h"
+#include "Cafe/HW/Latte/Renderer/Metal/LatteToMtl.h"
+
+MTL::SamplerBorderColor GetBorderColor(LatteConst::ShaderType shaderType, uint32 stageSamplerIndex, const _LatteRegisterSetSampler* samplerWords, bool logWorkaround = false)
+{
+    auto borderType = samplerWords->WORD0.get_BORDER_COLOR_TYPE();
+
+    MTL::SamplerBorderColor borderColor;
+    if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::TRANSPARENT_BLACK)
+        borderColor = MTL::SamplerBorderColorTransparentBlack;
+    else if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::OPAQUE_BLACK)
+        borderColor = MTL::SamplerBorderColorOpaqueBlack;
+    else if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::OPAQUE_WHITE)
+        borderColor = MTL::SamplerBorderColorOpaqueWhite;
+    else [[unlikely]]
+    {
+        _LatteRegisterSetSamplerBorderColor* borderColorReg;
+		if (shaderType == LatteConst::ShaderType::Vertex)
+			borderColorReg = LatteGPUState.contextNew.TD_VS_SAMPLER_BORDER_COLOR + stageSamplerIndex;
+		else if (shaderType == LatteConst::ShaderType::Pixel)
+			borderColorReg = LatteGPUState.contextNew.TD_PS_SAMPLER_BORDER_COLOR + stageSamplerIndex;
+		else // geometry
+			borderColorReg = LatteGPUState.contextNew.TD_GS_SAMPLER_BORDER_COLOR + stageSamplerIndex;
+		float r = borderColorReg->red.get_channelValue();
+		float g = borderColorReg->green.get_channelValue();
+		float b = borderColorReg->blue.get_channelValue();
+		float a = borderColorReg->alpha.get_channelValue();
+
+		// Metal doesn't support custom border color
+		// Let's find the best match
+		bool opaque = (a == 1.0f);
+		bool white = (r == 1.0f);
+		if (opaque)
+		{
+		    if (white)
+                borderColor = MTL::SamplerBorderColorOpaqueWhite;
+            else
+                borderColor = MTL::SamplerBorderColorOpaqueBlack;
+		}
+		else
+		{
+		    borderColor = MTL::SamplerBorderColorTransparentBlack;
+		}
+
+		if (logWorkaround)
+		{
+		    float newR, newG, newB, newA;
+			switch (borderColor)
+			{
+			case MTL::SamplerBorderColorTransparentBlack:
+                newR = 0.0f;
+                newG = 0.0f;
+                newB = 0.0f;
+                newA = 0.0f;
+                break;
+            case MTL::SamplerBorderColorOpaqueBlack:
+                newR = 0.0f;
+                newG = 0.0f;
+                newB = 0.0f;
+                newA = 1.0f;
+                break;
+            case MTL::SamplerBorderColorOpaqueWhite:
+                newR = 1.0f;
+                newG = 1.0f;
+                newB = 1.0f;
+                newA = 1.0f;
+                break;
+            }
+
+            if (r != newR || g != newG || b != newB || a != newA)
+                cemuLog_log(LogType::Force, "Custom border color ({}, {}, {}, {}) is not supported on Metal, using ({}, {}, {}, {}) instead", r, g, b, a, newR, newG, newB, newA);
+		}
+    }
+
+    return borderColor;
+}
 
 MetalSamplerCache::~MetalSamplerCache()
 {
@@ -11,30 +86,22 @@ MetalSamplerCache::~MetalSamplerCache()
     m_samplerCache.clear();
 }
 
-MTL::SamplerState* MetalSamplerCache::GetSamplerState(const LatteContextRegister& lcr, uint32 samplerIndex)
+MTL::SamplerState* MetalSamplerCache::GetSamplerState(const LatteContextRegister& lcr, LatteConst::ShaderType shaderType, uint32 stageSamplerIndex, const _LatteRegisterSetSampler* samplerWords)
 {
-    uint64 stateHash = CalculateSamplerHash(lcr, samplerIndex);
+    uint64 stateHash = CalculateSamplerHash(lcr, shaderType, stageSamplerIndex, samplerWords);
     auto& samplerState = m_samplerCache[stateHash];
     if (samplerState)
         return samplerState;
 
 	// Sampler state
-	const _LatteRegisterSetSampler* samplerWords = lcr.SQ_TEX_SAMPLER + samplerIndex;
 
-    MTL::SamplerDescriptor* samplerDescriptor = MTL::SamplerDescriptor::alloc()->init();
+
+    NS_STACK_SCOPED MTL::SamplerDescriptor* samplerDescriptor = MTL::SamplerDescriptor::alloc()->init();
 
     // lod
     uint32 iMinLOD = samplerWords->WORD1.get_MIN_LOD();
     uint32 iMaxLOD = samplerWords->WORD1.get_MAX_LOD();
-    sint32 iLodBias = samplerWords->WORD1.get_LOD_BIAS();
-
-    // TODO: uncomment
-    // apply relative lod bias from graphic pack
-    //if (baseTexture->overwriteInfo.hasRelativeLodBias)
-    //    iLodBias += baseTexture->overwriteInfo.relativeLodBias;
-    // apply absolute lod bias from graphic pack
-    //if (baseTexture->overwriteInfo.hasLodBias)
-    //    iLodBias = baseTexture->overwriteInfo.lodBias;
+    //sint32 iLodBias = samplerWords->WORD1.get_LOD_BIAS();
 
     auto filterMip = samplerWords->WORD0.get_MIP_FILTER();
     if (filterMip == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_Z_FILTER::NONE)
@@ -77,15 +144,11 @@ MTL::SamplerState* MetalSamplerCache::GetSamplerState(const LatteContextRegister
     auto clampY = samplerWords->WORD0.get_CLAMP_Y();
     auto clampZ = samplerWords->WORD0.get_CLAMP_Z();
 
-        samplerDescriptor->setSAddressMode(GetMtlSamplerAddressMode(clampX));
-        samplerDescriptor->setTAddressMode(GetMtlSamplerAddressMode(clampY));
-        samplerDescriptor->setRAddressMode(GetMtlSamplerAddressMode(clampZ));
+    samplerDescriptor->setSAddressMode(GetMtlSamplerAddressMode(clampX));
+    samplerDescriptor->setTAddressMode(GetMtlSamplerAddressMode(clampY));
+    samplerDescriptor->setRAddressMode(GetMtlSamplerAddressMode(clampZ));
 
     auto maxAniso = samplerWords->WORD0.get_MAX_ANISO_RATIO();
-
-    // TODO: uncomment
-    //if (baseTexture->overwriteInfo.anisotropicLevel >= 0)
-    //    maxAniso = baseTexture->overwriteInfo.anisotropicLevel;
 
     if (maxAniso > 0)
         samplerDescriptor->setMaxAnisotropy(1 << maxAniso);
@@ -98,32 +161,30 @@ MTL::SamplerState* MetalSamplerCache::GetSamplerState(const LatteContextRegister
     // TODO: is it okay to just cast?
     samplerDescriptor->setCompareFunction(GetMtlCompareFunc((Latte::E_COMPAREFUNC)samplerWords->WORD0.get_DEPTH_COMPARE_FUNCTION()));
 
-    // border
-    auto borderType = samplerWords->WORD0.get_BORDER_COLOR_TYPE();
-
-    if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::TRANSPARENT_BLACK)
-        samplerDescriptor->setBorderColor(MTL::SamplerBorderColorTransparentBlack);
-    else if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::OPAQUE_BLACK)
-        samplerDescriptor->setBorderColor(MTL::SamplerBorderColorOpaqueBlack);
-    else if (borderType == Latte::LATTE_SQ_TEX_SAMPLER_WORD0_0::E_BORDER_COLOR_TYPE::OPAQUE_WHITE)
-        samplerDescriptor->setBorderColor(MTL::SamplerBorderColorOpaqueWhite);
-    else
-    {
-       	// Metal doesn't support custom border color
-        cemuLog_logOnce(LogType::Force, "Custom border color is not supported in Metal, using transparent black instead");
-        samplerDescriptor->setBorderColor(MTL::SamplerBorderColorTransparentBlack);
-    }
+    // Border color
+    auto borderColor = GetBorderColor(shaderType, stageSamplerIndex, samplerWords, true);
+    samplerDescriptor->setBorderColor(borderColor);
 
     samplerState = m_mtlr->GetDevice()->newSamplerState(samplerDescriptor);
-    samplerDescriptor->release();
 
     return samplerState;
 }
 
-uint64 MetalSamplerCache::CalculateSamplerHash(const LatteContextRegister& lcr, uint32 samplerIndex)
+uint64 MetalSamplerCache::CalculateSamplerHash(const LatteContextRegister& lcr, LatteConst::ShaderType shaderType, uint32 stageSamplerIndex, const _LatteRegisterSetSampler* samplerWords)
 {
-    const _LatteRegisterSetSampler* samplerWords = lcr.SQ_TEX_SAMPLER + samplerIndex;
+    uint64 hash = 0;
+    hash = std::rotl<uint64>(hash, 17);
+    hash += (uint64)samplerWords->WORD0.getRawValue();
+    hash = std::rotl<uint64>(hash, 17);
+    hash += (uint64)samplerWords->WORD1.getRawValue();
+    hash = std::rotl<uint64>(hash, 17);
+    hash += (uint64)samplerWords->WORD2.getRawValue();
+
+    auto borderColor = GetBorderColor(shaderType, stageSamplerIndex, samplerWords);
+
+    hash = std::rotl<uint64>(hash, 5);
+    hash += (uint64)borderColor;
 
     // TODO: check this
-	return *((uint64*)samplerWords);
+	return hash;
 }

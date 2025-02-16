@@ -2,8 +2,8 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalCommon.h"
 
-#include "Cemu/FileCache/FileCache.h"
-#include "config/ActiveSettings.h"
+//#include "Cemu/FileCache/FileCache.h"
+//#include "config/ActiveSettings.h"
 #include "Cemu/Logging/CemuLogging.h"
 #include "Common/precompiled.h"
 #include "GameProfile/GameProfile.h"
@@ -276,15 +276,18 @@ bool RendererShaderMtl::ShouldCountCompilation() const
 MTL::Library* RendererShaderMtl::LibraryFromSource()
 {
     // Compile from source
-    MTL::CompileOptions* options = MTL::CompileOptions::alloc()->init();
+    NS_STACK_SCOPED MTL::CompileOptions* options = MTL::CompileOptions::alloc()->init();
     if (g_current_game_profile->GetFastMath())
         options->setFastMathEnabled(true);
-    if (g_current_game_profile->GetPositionInvariance())
+
+    if (m_mtlr->GetPositionInvariance())
+    {
+        // TODO: filter out based on GPU state
         options->setPreserveInvariance(true);
+    }
 
     NS::Error* error = nullptr;
 	MTL::Library* library = m_mtlr->GetDevice()->newLibrary(ToNSString(m_mslCode), options, &error);
-	options->release();
 	if (error)
     {
         cemuLog_log(LogType::Force, "failed to create library from source: {} -> {}", error->localizedDescription()->utf8String(), m_mslCode.c_str());
@@ -336,6 +339,7 @@ void RendererShaderMtl::CompileInternal()
     {
         // Compile from source
         library = LibraryFromSource();
+        FinishCompilation();
         if (!library)
             return;
 

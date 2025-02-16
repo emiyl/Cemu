@@ -126,11 +126,20 @@ ENABLE_ENUM_ITERATORS(AccurateShaderMulOption, AccurateShaderMulOption::False, A
 
 enum class BufferCacheMode
 {
+    Auto,
     DevicePrivate,
     DeviceShared,
     Host,
 };
-ENABLE_ENUM_ITERATORS(BufferCacheMode, BufferCacheMode::DevicePrivate, BufferCacheMode::Host);
+ENABLE_ENUM_ITERATORS(BufferCacheMode, BufferCacheMode::Auto, BufferCacheMode::Host);
+
+enum class PositionInvariance
+{
+    Auto,
+    False,
+    True,
+};
+ENABLE_ENUM_ITERATORS(PositionInvariance, PositionInvariance::False, PositionInvariance::True);
 
 enum class CPUMode
 {
@@ -201,7 +210,7 @@ ENABLE_ENUM_ITERATORS(CrashDump, CrashDump::Disabled, CrashDump::Enabled);
 #endif
 
 template <>
-struct fmt::formatter<PrecompiledShaderOption> : formatter<string_view> {
+struct fmt::formatter<const PrecompiledShaderOption> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const PrecompiledShaderOption c, FormatContext &ctx) const {
 		string_view name;
@@ -216,7 +225,7 @@ struct fmt::formatter<PrecompiledShaderOption> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<AccurateShaderMulOption> : formatter<string_view> {
+struct fmt::formatter<const AccurateShaderMulOption> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const AccurateShaderMulOption c, FormatContext &ctx) const {
 		string_view name;
@@ -230,12 +239,13 @@ struct fmt::formatter<AccurateShaderMulOption> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<BufferCacheMode> : formatter<string_view> {
+struct fmt::formatter<const BufferCacheMode> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const BufferCacheMode c, FormatContext &ctx) const {
 		string_view name;
 		switch (c)
 		{
+		case BufferCacheMode::Auto: name = "auto"; break;
 		case BufferCacheMode::DevicePrivate: name = "device private"; break;
 		case BufferCacheMode::DeviceShared: name = "device shared"; break;
 		case BufferCacheMode::Host: name = "host"; break;
@@ -245,7 +255,22 @@ struct fmt::formatter<BufferCacheMode> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<CPUMode> : formatter<string_view> {
+struct fmt::formatter<const PositionInvariance> : formatter<string_view> {
+	template <typename FormatContext>
+	auto format(const PositionInvariance c, FormatContext &ctx) const {
+		string_view name;
+		switch (c)
+		{
+		case PositionInvariance::Auto: name = "auto"; break;
+		case PositionInvariance::False: name = "false"; break;
+		case PositionInvariance::True: name = "true"; break;
+		default: name = "unknown"; break;
+		}
+		return formatter<string_view>::format(name, ctx);
+	}
+};
+template <>
+struct fmt::formatter<const CPUMode> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CPUMode c, FormatContext &ctx) const {
 		string_view name;
@@ -262,7 +287,7 @@ struct fmt::formatter<CPUMode> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<CPUModeLegacy> : formatter<string_view> {
+struct fmt::formatter<const CPUModeLegacy> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CPUModeLegacy c, FormatContext &ctx) const {
 		string_view name;
@@ -279,7 +304,7 @@ struct fmt::formatter<CPUModeLegacy> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<CafeConsoleRegion> : formatter<string_view> {
+struct fmt::formatter<const CafeConsoleRegion> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CafeConsoleRegion v, FormatContext &ctx) const {
 		string_view name;
@@ -300,7 +325,7 @@ struct fmt::formatter<CafeConsoleRegion> : formatter<string_view> {
 	}
 };
 template <>
-struct fmt::formatter<CafeConsoleLanguage> : formatter<string_view> {
+struct fmt::formatter<const CafeConsoleLanguage> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CafeConsoleLanguage v, FormatContext &ctx) {
 		string_view name;
@@ -326,7 +351,7 @@ struct fmt::formatter<CafeConsoleLanguage> : formatter<string_view> {
 
 #if BOOST_OS_WINDOWS
 template <>
-struct fmt::formatter<CrashDump> : formatter<string_view> {
+struct fmt::formatter<const CrashDump> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CrashDump v, FormatContext &ctx) {
 		string_view name;
@@ -343,7 +368,7 @@ struct fmt::formatter<CrashDump> : formatter<string_view> {
 };
 #elif BOOST_OS_UNIX
 template <>
-struct fmt::formatter<CrashDump> : formatter<string_view> {
+struct fmt::formatter<const CrashDump> : formatter<string_view> {
 	template <typename FormatContext>
 	auto format(const CrashDump v, FormatContext &ctx) {
 		string_view name;

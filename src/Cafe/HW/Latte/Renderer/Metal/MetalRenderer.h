@@ -6,6 +6,7 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalPerformanceMonitor.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalOutputShaderCache.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalAttachmentsInfo.h"
+#include "Foundation/NSAutoreleasePool.hpp"
 
 enum MetalGeneralShaderType
 {
@@ -110,6 +111,7 @@ struct MetalState
     MetalActiveFBOState m_activeFBO;
     // If the FBO changes, but it's the same FBO as the last one with some omitted attachments, this FBO doesn't change
     MetalActiveFBOState m_lastUsedFBO;
+    bool m_fboChanged = false;
 
     size_t m_vertexBufferOffsets[MAX_MTL_VERTEX_BUFFERS];
     class LatteTextureViewMtl* m_textures[LATTE_NUM_MAX_TEX_UNITS * 3] = {nullptr};
@@ -358,6 +360,11 @@ public:
     void CopyBufferToBuffer(MTL::Buffer* src, uint32 srcOffset, MTL::Buffer* dst, uint32 dstOffset, uint32 size, MTL::RenderStages after, MTL::RenderStages before);
 
     // Getters
+    bool GetPositionInvariance() const
+    {
+        return m_positionInvariance;
+    }
+
     bool IsAppleGPU() const
     {
         return m_isAppleGPU;
@@ -464,6 +471,9 @@ private:
 
 	MetalPerformanceMonitor m_performanceMonitor;
 
+	// Options
+	bool m_positionInvariance;
+
 	// Metal objects
 	MTL::Device* m_device = nullptr;
 	MTL::CommandQueue* m_commandQueue;
@@ -518,6 +528,9 @@ private:
         bool m_active = false;
         MTL::CommandBuffer* m_lastCommandBuffer = nullptr;
 	} m_occlusionQuery;
+
+	// Autorelease pool
+	NS::AutoreleasePool* m_autoreleasePool;
 
 	// Active objects
 	MetalCommandBuffer m_currentCommandBuffer{};

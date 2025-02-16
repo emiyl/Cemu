@@ -50,10 +50,12 @@ inline size_t Align(size_t size, size_t alignment)
     return (size + alignment - 1) & ~(alignment - 1);
 }
 
-//inline std::string GetColorAttachmentTypeStr(uint32 index)
-//{
-//    return "COLOR_ATTACHMENT" + std::to_string(index) + "_TYPE";
-//}
+__attribute__((unused)) static inline void ETStackAutoRelease(void* object)
+{
+    (*(NS::Object**)object)->release();
+}
+
+#define NS_STACK_SCOPED __attribute__((cleanup(ETStackAutoRelease))) __attribute__((unused))
 
 // Cast from const char* to NS::String*
 inline NS::String* ToNSString(const char* str)
@@ -115,6 +117,7 @@ inline bool executeCommand(fmt::format_string<T...> fmt, T&&... args) {
     return true;
 }
 
+/*
 class MemoryMappedFile
 {
 public:
@@ -177,3 +180,33 @@ private:
     void* m_data = nullptr;
     size_t m_fileSize = 0;
 };
+*/
+
+inline uint32 GetVerticesPerPrimitive(LattePrimitiveMode primitiveMode)
+{
+    switch (primitiveMode)
+    {
+    case LattePrimitiveMode::POINTS:
+        return 1;
+    case LattePrimitiveMode::LINES:
+        return 2;
+    case LattePrimitiveMode::LINE_STRIP:
+        // Same as line, but requires connection
+        return 2;
+    case LattePrimitiveMode::TRIANGLES:
+        return 3;
+    case LattePrimitiveMode::RECTS:
+        return 3;
+    default:
+        cemuLog_log(LogType::Force, "Unimplemented primitive type {}", primitiveMode);
+        return 0;
+    }
+}
+
+inline bool PrimitiveRequiresConnection(LattePrimitiveMode primitiveMode)
+{
+    if (primitiveMode == LattePrimitiveMode::LINE_STRIP)
+        return true;
+    else
+        return false;
+}

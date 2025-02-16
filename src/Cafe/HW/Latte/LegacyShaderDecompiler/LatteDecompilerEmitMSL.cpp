@@ -3938,21 +3938,7 @@ void LatteDecompiler_emitMSLShader(LatteDecompilerShaderContext* shaderContext, 
     bool fetchVertexManually = (usesGeometryShader || (shaderContext->fetchShader && shaderContext->fetchShader->mtlFetchVertexManually));
 
     // Rasterization
-    rasterizationEnabled = true;
-    if (shader->shaderType == LatteConst::ShaderType::Vertex && !usesGeometryShader)
-    {
-        rasterizationEnabled = !shaderContext->contextRegistersNew->PA_CL_CLIP_CNTL.get_DX_RASTERIZATION_KILL();
-
-    	// HACK
-    	if (!shaderContext->contextRegistersNew->PA_CL_VTE_CNTL.get_VPORT_X_OFFSET_ENA())
-    		rasterizationEnabled = true;
-
-    	const auto& polygonControlReg = shaderContext->contextRegistersNew->PA_SU_SC_MODE_CNTL;
-    	uint32 cullFront = polygonControlReg.get_CULL_FRONT();
-    	uint32 cullBack = polygonControlReg.get_CULL_BACK();
-    	if (cullFront && cullBack)
-    	    rasterizationEnabled = false;
-    }
+    rasterizationEnabled = shaderContext->contextRegistersNew->IsRasterizationEnabled();
 
 	StringBuf* src = new StringBuf(1024*1024*12); // reserve 12MB for generated source (we resize-to-fit at the end)
 	shaderContext->shaderSource = src;
@@ -4154,7 +4140,11 @@ void LatteDecompiler_emitMSLShader(LatteDecompilerShaderContext* shaderContext, 
             if (usesGeometryShader)
             {
            	    // Calculate the imaginary vertex id
-           	    src->add("uint vid = tig * VERTICES_PER_VERTEX_PRIMITIVE + tid;" _CRLF);
+                LattePrimitiveMode vsOutPrimType = shaderContext->contextRegistersNew->VGT_PRIMITIVE_TYPE.get_PRIMITIVE_MODE();
+                if (PrimitiveRequiresConnection(vsOutPrimType))
+           	        src->add("uint vid = tig + tid;" _CRLF);
+                else
+       	            src->add("uint vid = tig * VERTICES_PER_VERTEX_PRIMITIVE + tid;" _CRLF);
           		src->add("uint iid = vid / supportBuffer.verticesPerInstance;" _CRLF);
                 src->add("vid %= supportBuffer.verticesPerInstance;" _CRLF);
 
