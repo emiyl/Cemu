@@ -236,7 +236,7 @@ jobs:
         cd build
         cmake .. ${{ env.BUILD_FLAGS }} \
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} \
-        -DCMAKE_OSX_ARCHITECTURES=x86_64 \
+        -DCMAKE_OSX_ARCHITECTURES=arm64 \
         -DMACOS_BUNDLE=ON \
         -G Ninja
         
