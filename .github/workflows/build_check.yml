@@ -1,5 +1,6 @@
 name: Build check
 on: 
+  workflow_dispatch:
   pull_request:
     paths-ignore:
       - "*.md"
@@ -11,7 +12,7 @@ on:
     paths-ignore:
       - "*.md"
     branches:
-      - main
+      - apple-silicon-metal
 
 jobs:
   build:
