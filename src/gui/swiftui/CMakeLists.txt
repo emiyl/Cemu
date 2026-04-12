@@ -16,6 +16,9 @@ target_include_directories(CemuSwiftUiGui PUBLIC "../")
 
 target_link_libraries(CemuSwiftUiGui PRIVATE
   CemuCommon
+  CemuConfig
+  CemuCafe
+  CemuResource
 )
 
 find_library(COCOA_FRAMEWORK Cocoa REQUIRED)

@@ -2,7 +2,13 @@
 
 #include "interface/WindowSystem.h"
 
+#include "Cafe/CafeSystem.h"
+#include "Cafe/TitleList/TitleInfo.h"
+#include "Cafe/TitleList/TitleList.h"
+#include "config/ActiveSettings.h"
+
 #import <Cocoa/Cocoa.h>
+#import <UniformTypeIdentifiers/UniformTypeIdentifiers.h>
 
 extern "C" void *CemuCreateSwiftUIRootViewController(void);
 
@@ -16,6 +22,13 @@ extern "C" void *CemuCreateSwiftUIRootViewController(void);
 - (void)showAbout:(id)sender;
 @end
 
+namespace {
+extern WindowSystem::WindowInfo g_window_info;
+extern NSWindow *g_main_window;
+extern CemuAppDelegate *g_app_delegate;
+bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut);
+}
+
 @implementation CemuAppDelegate
 
 - (void)setupMenuBar {
@@ -26,7 +39,8 @@ extern "C" void *CemuCreateSwiftUIRootViewController(void);
   NSMenuItem *fileMenuItem = [mainMenu addItemWithTitle:@"File" action:nil keyEquivalent:@""];
   [mainMenu setSubmenu:fileMenu forItem:fileMenuItem];
   
-  [fileMenu addItemWithTitle:@"Open Game..." action:@selector(openGame:) keyEquivalent:@"o"];
+  NSMenuItem *openGameItem = [fileMenu addItemWithTitle:@"Open Game..." action:@selector(openGame:) keyEquivalent:@"o"];
+  [openGameItem setTarget:self];
   [fileMenu addItem:[NSMenuItem separatorItem]];
   NSMenuItem *quitItem = [fileMenu addItemWithTitle:@"Quit Cemu" action:@selector(quitApp:) keyEquivalent:@"q"];
   [quitItem setTarget:self];
@@ -36,22 +50,26 @@ extern "C" void *CemuCreateSwiftUIRootViewController(void);
   NSMenuItem *editMenuItem = [mainMenu addItemWithTitle:@"Edit" action:nil keyEquivalent:@""];
   [mainMenu setSubmenu:editMenu forItem:editMenuItem];
   
-  [editMenu addItemWithTitle:@"Preferences..." action:@selector(openPreferences:) keyEquivalent:@","];
+  NSMenuItem *preferencesItem = [editMenu addItemWithTitle:@"Preferences..." action:@selector(openPreferences:) keyEquivalent:@","];
+  [preferencesItem setTarget:self];
   
   // View menu
   NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
   NSMenuItem *viewMenuItem = [mainMenu addItemWithTitle:@"View" action:nil keyEquivalent:@""];
   [mainMenu setSubmenu:viewMenu forItem:viewMenuItem];
   
-  [viewMenu addItemWithTitle:@"Toggle Fullscreen" action:@selector(toggleFullscreen:) keyEquivalent:@"f"];
+  NSMenuItem *fullscreenItem = [viewMenu addItemWithTitle:@"Toggle Fullscreen" action:@selector(toggleFullscreen:) keyEquivalent:@"f"];
+  [fullscreenItem setTarget:self];
   
   // Help menu
   NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
   NSMenuItem *helpMenuItem = [mainMenu addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
   [mainMenu setSubmenu:helpMenu forItem:helpMenuItem];
   
-  [helpMenu addItemWithTitle:@"Cemu Help" action:@selector(showHelp:) keyEquivalent:@""];
-  [helpMenu addItemWithTitle:@"About Cemu" action:@selector(showAbout:) keyEquivalent:@""];
+  NSMenuItem *helpItem = [helpMenu addItemWithTitle:@"Cemu Help" action:@selector(showHelp:) keyEquivalent:@""];
+  [helpItem setTarget:self];
+  NSMenuItem *aboutItem = [helpMenu addItemWithTitle:@"About Cemu" action:@selector(showAbout:) keyEquivalent:@""];
+  [aboutItem setTarget:self];
   
   [NSApp setMainMenu:mainMenu];
 }
@@ -61,19 +79,75 @@ extern "C" void *CemuCreateSwiftUIRootViewController(void);
 }
 
 - (void)openGame:(id)sender {
-  NSLog(@"Open game action");
+  if (CafeSystem::IsTitleRunning()) {
+    WindowSystem::ShowErrorDialog("A title is already running.",
+                                  "Launch blocked");
+    return;
+  }
+
+  NSOpenPanel *panel = [NSOpenPanel openPanel];
+  [panel setCanChooseFiles:YES];
+  [panel setCanChooseDirectories:NO];
+  [panel setAllowsMultipleSelection:NO];
+  [panel setAllowedContentTypes:@[
+    [UTType typeWithFilenameExtension:@"wud"],
+    [UTType typeWithFilenameExtension:@"wux"],
+    [UTType typeWithFilenameExtension:@"wua"],
+    [UTType typeWithFilenameExtension:@"wuhb"],
+    [UTType typeWithFilenameExtension:@"iso"],
+    [UTType typeWithFilenameExtension:@"rpx"],
+    [UTType typeWithFilenameExtension:@"elf"],
+    [UTType typeWithFilenameExtension:@"tmd"]
+  ]];
+
+  if ([panel runModal] != NSModalResponseOK || panel.URL == nil)
+    return;
+
+  NSString *pathString = panel.URL.path;
+  if (pathString.length == 0)
+    return;
+
+  fs::path launchPath = _utf8ToPath(std::string(pathString.UTF8String));
+  std::string errorMessage;
+  if (!PrepareLaunchPath(launchPath, errorMessage)) {
+    WindowSystem::ShowErrorDialog(errorMessage, "Failed to launch game");
+    return;
+  }
+
+  WindowSystem::UpdateWindowTitles(false, true, 0.0);
+  CafeSystem::LaunchForegroundTitle();
+  WindowSystem::NotifyGameLoaded();
+
+  const std::string titleName = CafeSystem::GetForegroundTitleName();
+  if (!titleName.empty() && g_main_window) {
+    [g_main_window setTitle:[NSString stringWithUTF8String:titleName.c_str()]];
+  }
 }
 
 - (void)openPreferences:(id)sender {
-  NSLog(@"Preferences action");
+  fs::path configPath = ActiveSettings::GetConfigPath();
+  std::string configPathUtf8 = _pathToUtf8(configPath);
+  NSString *configNSString =
+      [NSString stringWithUTF8String:configPathUtf8.c_str()];
+  if (configNSString.length == 0)
+    return;
+
+  NSURL *configURL = [NSURL fileURLWithPath:configNSString isDirectory:YES];
+  [[NSWorkspace sharedWorkspace] openURL:configURL];
 }
 
 - (void)toggleFullscreen:(id)sender {
-  NSLog(@"Toggle fullscreen action");
+  if (!g_main_window)
+    return;
+
+  [g_main_window toggleFullScreen:nil];
+  g_window_info.is_fullscreen = !g_window_info.is_fullscreen.load();
 }
 
 - (void)showHelp:(id)sender {
-  NSLog(@"Show help action");
+  NSURL *helpURL = [NSURL URLWithString:@"https://wiki.cemu.info"];
+  if (helpURL)
+    [[NSWorkspace sharedWorkspace] openURL:helpURL];
 }
 
 - (void)showAbout:(id)sender {
@@ -91,6 +165,49 @@ namespace {
 WindowSystem::WindowInfo g_window_info{};
 NSWindow *g_main_window = nil;
 CemuAppDelegate *g_app_delegate = nil;
+
+bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut) {
+  TitleInfo launchTitle{launchPath};
+  if (launchTitle.IsValid()) {
+    CafeTitleList::AddTitleFromPath(launchPath);
+
+    TitleId baseTitleId;
+    if (!CafeTitleList::FindBaseTitleId(launchTitle.GetAppTitleId(),
+                                        baseTitleId)) {
+      errorOut =
+          "Unable to launch game because the base files were not found.";
+      return false;
+    }
+
+    CafeSystem::PREPARE_STATUS_CODE status =
+        CafeSystem::PrepareForegroundTitle(baseTitleId);
+    if (status == CafeSystem::PREPARE_STATUS_CODE::UNABLE_TO_MOUNT) {
+      errorOut =
+          "Unable to mount title. Make sure your game paths are valid and "
+          "refresh the game list.";
+      return false;
+    }
+    if (status != CafeSystem::PREPARE_STATUS_CODE::SUCCESS) {
+      errorOut = "Failed to prepare the selected game for launch.";
+      return false;
+    }
+    return true;
+  }
+
+  CafeTitleFileType fileType = DetermineCafeSystemFileType(launchPath);
+  if (fileType == CafeTitleFileType::RPX || fileType == CafeTitleFileType::ELF) {
+    CafeSystem::PREPARE_STATUS_CODE status =
+        CafeSystem::PrepareForegroundTitleFromStandaloneRPX(launchPath);
+    if (status != CafeSystem::PREPARE_STATUS_CODE::SUCCESS) {
+      errorOut = "Failed to prepare standalone RPX/ELF executable.";
+      return false;
+    }
+    return true;
+  }
+
+  errorOut = "Unsupported or invalid Wii U title path.";
+  return false;
+}
 }  // namespace
 
 void WindowSystem::ShowErrorDialog(
@@ -264,7 +381,7 @@ void WindowSystem::NotifyGameLoaded() {}
 
 void WindowSystem::NotifyGameExited() {}
 
-void WindowSystem::RefreshGameList() {}
+void WindowSystem::RefreshGameList() { CafeTitleList::Refresh(); }
 
 void WindowSystem::CaptureInput(const ControllerState & /*currentState*/,
                                 const ControllerState & /*lastState*/) {}
