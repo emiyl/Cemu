@@ -4,10 +4,94 @@
 
 #import <Cocoa/Cocoa.h>
 
+extern "C" void *CemuCreateSwiftUIRootViewController(void);
+
+@interface CemuAppDelegate : NSObject <NSApplicationDelegate>
+- (void)setupMenuBar;
+- (void)quitApp:(id)sender;
+- (void)openGame:(id)sender;
+- (void)openPreferences:(id)sender;
+- (void)toggleFullscreen:(id)sender;
+- (void)showHelp:(id)sender;
+- (void)showAbout:(id)sender;
+@end
+
+@implementation CemuAppDelegate
+
+- (void)setupMenuBar {
+  NSMenu *mainMenu = [[NSMenu alloc] init];
+  
+  // File menu
+  NSMenu *fileMenu = [[NSMenu alloc] initWithTitle:@"File"];
+  NSMenuItem *fileMenuItem = [mainMenu addItemWithTitle:@"File" action:nil keyEquivalent:@""];
+  [mainMenu setSubmenu:fileMenu forItem:fileMenuItem];
+  
+  [fileMenu addItemWithTitle:@"Open Game..." action:@selector(openGame:) keyEquivalent:@"o"];
+  [fileMenu addItem:[NSMenuItem separatorItem]];
+  NSMenuItem *quitItem = [fileMenu addItemWithTitle:@"Quit Cemu" action:@selector(quitApp:) keyEquivalent:@"q"];
+  [quitItem setTarget:self];
+  
+  // Edit menu
+  NSMenu *editMenu = [[NSMenu alloc] initWithTitle:@"Edit"];
+  NSMenuItem *editMenuItem = [mainMenu addItemWithTitle:@"Edit" action:nil keyEquivalent:@""];
+  [mainMenu setSubmenu:editMenu forItem:editMenuItem];
+  
+  [editMenu addItemWithTitle:@"Preferences..." action:@selector(openPreferences:) keyEquivalent:@","];
+  
+  // View menu
+  NSMenu *viewMenu = [[NSMenu alloc] initWithTitle:@"View"];
+  NSMenuItem *viewMenuItem = [mainMenu addItemWithTitle:@"View" action:nil keyEquivalent:@""];
+  [mainMenu setSubmenu:viewMenu forItem:viewMenuItem];
+  
+  [viewMenu addItemWithTitle:@"Toggle Fullscreen" action:@selector(toggleFullscreen:) keyEquivalent:@"f"];
+  
+  // Help menu
+  NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
+  NSMenuItem *helpMenuItem = [mainMenu addItemWithTitle:@"Help" action:nil keyEquivalent:@""];
+  [mainMenu setSubmenu:helpMenu forItem:helpMenuItem];
+  
+  [helpMenu addItemWithTitle:@"Cemu Help" action:@selector(showHelp:) keyEquivalent:@""];
+  [helpMenu addItemWithTitle:@"About Cemu" action:@selector(showAbout:) keyEquivalent:@""];
+  
+  [NSApp setMainMenu:mainMenu];
+}
+
+- (void)quitApp:(id)sender {
+  [NSApp terminate:sender];
+}
+
+- (void)openGame:(id)sender {
+  NSLog(@"Open game action");
+}
+
+- (void)openPreferences:(id)sender {
+  NSLog(@"Preferences action");
+}
+
+- (void)toggleFullscreen:(id)sender {
+  NSLog(@"Toggle fullscreen action");
+}
+
+- (void)showHelp:(id)sender {
+  NSLog(@"Show help action");
+}
+
+- (void)showAbout:(id)sender {
+  NSAlert *about = [[NSAlert alloc] init];
+  [about setAlertStyle:NSAlertStyleInformational];
+  [about setMessageText:@"About Cemu"];
+  [about setInformativeText:@"Cemu - Wii U Emulator\nSwiftUI macOS GUI"];
+  [about addButtonWithTitle:@"OK"];
+  [about runModal];
+}
+
+@end
+
 namespace {
 WindowSystem::WindowInfo g_window_info{};
 NSWindow *g_main_window = nil;
-} // namespace
+CemuAppDelegate *g_app_delegate = nil;
+}  // namespace
 
 void WindowSystem::ShowErrorDialog(
     std::string_view message, std::string_view title,
@@ -30,21 +114,58 @@ void WindowSystem::ShowErrorDialog(
 
 void WindowSystem::Create() {
   @autoreleasepool {
-    [NSApplication sharedApplication];
-    [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
+    NSApplication *app = [NSApplication sharedApplication];
+    [app setActivationPolicy:NSApplicationActivationPolicyRegular];
+    
+    // Setup application delegate with menu bar
+    g_app_delegate = [[CemuAppDelegate alloc] init];
+    [app setDelegate:g_app_delegate];
+    [g_app_delegate setupMenuBar];
 
     const NSRect frame = NSMakeRect(120.0, 120.0, 1280.0, 720.0);
     const NSWindowStyleMask style =
         NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
-        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+        NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
+        NSWindowStyleMaskUnifiedTitleAndToolbar;
 
     g_main_window = [[NSWindow alloc] initWithContentRect:frame
                                                 styleMask:style
                                                   backing:NSBackingStoreBuffered
                                                     defer:NO];
-    [g_main_window setTitle:@"Cemu (SwiftUI)"];
+    [g_main_window setTitle:@"Cemu"];
+    [g_main_window setTitlebarAppearsTransparent:NO];
+    
+    // Instantiate SwiftUI-backed root controller via explicit Swift C symbol.
+    NSViewController *rootViewController = nil;
+    if (void *swiftControllerPtr = CemuCreateSwiftUIRootViewController()) {
+      id swiftControllerObj = (__bridge id)swiftControllerPtr;
+      if ([swiftControllerObj isKindOfClass:[NSViewController class]]) {
+        rootViewController = (NSViewController *)swiftControllerObj;
+      }
+    }
+    if (!rootViewController) {
+      rootViewController = [[NSViewController alloc] init];
+      NSView *contentView = [[NSView alloc] initWithFrame:frame];
+      [contentView setWantsLayer:YES];
+      contentView.layer.backgroundColor = NSColor.windowBackgroundColor.CGColor;
+
+      NSTextField *fallbackLabel = [NSTextField labelWithString:
+          @"SwiftUI root view not found.\nUsing AppKit fallback view."];
+      [fallbackLabel setFont:[NSFont systemFontOfSize:16 weight:NSFontWeightMedium]];
+      [fallbackLabel setTextColor:NSColor.secondaryLabelColor];
+      [fallbackLabel setAlignment:NSTextAlignmentCenter];
+      [fallbackLabel setFrame:NSMakeRect(40, frame.size.height / 2 - 20,
+                                         frame.size.width - 80, 60)];
+      [fallbackLabel setAutoresizingMask:NSViewWidthSizable | NSViewMinYMargin | NSViewMaxYMargin];
+      [contentView addSubview:fallbackLabel];
+
+      rootViewController.view = contentView;
+    }
+    
+    [g_main_window setContentViewController:rootViewController];
+    
     [g_main_window makeKeyAndOrderFront:nil];
-    [NSApp activateIgnoringOtherApps:YES];
+    [app activateIgnoringOtherApps:YES];
 
     g_window_info.app_active = true;
     g_window_info.width = static_cast<int32_t>(frame.size.width);
