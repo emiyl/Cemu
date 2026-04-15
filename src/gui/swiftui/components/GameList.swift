@@ -11,6 +11,7 @@ private let gameListColumns: [GameListColumn] = [
     GameListColumn(title: "Title ID", width: 200, alignment: .leading),
     GameListColumn(title: "Name", width: 340, alignment: .leading),
     GameListColumn(title: "Version", width: 80, alignment: .center),
+    GameListColumn(title: "DLC", width: 80, alignment: .center),
     GameListColumn(title: "Region", width: 80, alignment: .center),
 ]
 
@@ -34,8 +35,19 @@ private func CemuGameListGetRow(
 private struct CemuGameListRow {
     var titleId: UInt64
     var name: UnsafePointer<CChar>?
-    var version: UInt32
+    var version: UInt16
+    var dlc: UInt16
     var region: UnsafePointer<CChar>?
+}
+
+struct GameItem: Identifiable {
+    let titleID: UInt64
+    let name: String
+    let version: UInt16
+    let dlc: UInt16
+    let region: String
+
+    var id: UInt64 { titleID }
 }
 
 struct GameList: View {
@@ -116,6 +128,7 @@ struct GameList: View {
                 titleId: 0,
                 name: nil,
                 version: 0,
+                dlc: 0,
                 region: nil
             )
             if CemuGameListGetRow(i, &row), let namePtr = row.name {
@@ -125,6 +138,7 @@ struct GameList: View {
                         titleID: row.titleId,
                         name: name,
                         version: row.version,
+                        dlc: row.dlc,
                         region: row.region != nil ? String(cString: row.region!) : ""
                     ))
             }
@@ -171,11 +185,16 @@ struct GameListRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: gameListColumns[2].width, alignment: gameListColumns[2].alignment)
-            Text(game.region)
+            Text(game.dlc > 0 ? String(format: "%u", game.dlc) : "-")
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: gameListColumns[3].width, alignment: gameListColumns[3].alignment)
+            Text(game.region)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: gameListColumns[4].width, alignment: gameListColumns[4].alignment)
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
@@ -215,13 +234,4 @@ struct GameListInfoBarView: View {
         .padding(.vertical, 7)
         .background(Color(nsColor: .unemphasizedSelectedContentBackgroundColor))
     }
-}
-
-struct GameItem: Identifiable {
-    let titleID: UInt64
-    let name: String
-    let version: UInt32
-    let region: String
-
-    var id: UInt64 { titleID }
 }

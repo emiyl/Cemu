@@ -9,7 +9,8 @@ typedef struct
 {
 	uint64_t titleId;
 	const char* name;
-	uint32_t version;
+	uint16_t version;
+	uint16_t dlc;
 	const char* region;
 } CemuGameListRow;
 

@@ -8,6 +8,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include <atomic>
 #include <cstdint>
 #include <mutex>
 
@@ -15,7 +16,8 @@ struct GameInfo
 {
 	uint64_t titleId;
 	std::string name;
-	uint32_t version;
+	uint16_t version;
+	uint16_t dlc;
 	std::string region;
 };
 
@@ -27,6 +29,7 @@ class GameList
 	GameList()
 	{
 		m_titleListCallbackId = CafeTitleList::RegisterCallback(&GameList::OnTitleListEvent, this);
+		m_needsRebuild = true;
 	}
 
 	~GameList()
@@ -51,6 +54,8 @@ class GameList
 
 	std::vector<GameInfo> GetEntries()
 	{
+		RebuildEntriesIfNeeded();
+
 		std::lock_guard lock(m_entriesMutex);
 		std::vector<GameInfo> entries;
 		for (const auto& [titleId, info] : m_entries)
@@ -80,44 +85,48 @@ class GameList
 		if (!evt->titleInfo)
 			return;
 
-		if (evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED)
-			OnTitleDiscovered(*evt->titleInfo);
-		else if (evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_REMOVED)
-			OnTitleRemoved(evt->titleInfo->GetAppTitleId());
+		m_needsRebuild = true;
+
+		uint64_t baseTitleId = evt->titleInfo->GetAppTitleId();
+		CafeTitleList::FindBaseTitleId(evt->titleInfo->GetAppTitleId(), baseTitleId);
+		if (m_onEntryChanged)
+			m_onEntryChanged(baseTitleId);
 	}
 
-	void OnTitleDiscovered(const TitleInfo& titleInfo)
+	void RebuildEntriesIfNeeded()
 	{
-		const uint64_t titleId = titleInfo.GetAppTitleId();
+		if (!m_needsRebuild.exchange(false))
+			return;
 
-		GameInfo info{};
-		info.titleId = titleId;
-		if (!GetConfig().GetGameListCustomName(titleId, info.name) || info.name.empty())
-			info.name = titleInfo.GetMetaTitleName();
-		info.version = titleInfo.GetAppTitleVersion();
-		info.region = fmt::format("{}", static_cast<int>(titleInfo.GetMetaRegion()));
+		auto titleIds = CafeTitleList::GetAllTitleIds();
+		std::unordered_map<uint64_t, GameInfo> rebuiltEntries;
 
+		for (const auto titleId : titleIds)
 		{
-			std::lock_guard lock(m_entriesMutex);
-			m_entries[titleId] = info;
+			GameInfo2 gameInfo = CafeTitleList::GetGameInfo(titleId);
+			if (!gameInfo.IsValid() || gameInfo.IsSystemDataTitle())
+				continue;
+
+			const uint64_t baseTitleId = gameInfo.GetBaseTitleId();
+			GameInfo info{};
+
+			info.titleId = baseTitleId;
+			if (!GetConfig().GetGameListCustomName(baseTitleId, info.name) || info.name.empty())
+				info.name = gameInfo.GetTitleName();
+			info.version = gameInfo.GetVersion();
+			info.dlc = gameInfo.GetAOCVersion();
+			info.region = fmt::format("{}", static_cast<int>(gameInfo.GetRegion()));
+
+			rebuiltEntries[baseTitleId] = std::move(info);
 		}
 
-		if (m_onEntryChanged)
-			m_onEntryChanged(titleId);
-	}
-
-	void OnTitleRemoved(uint64_t titleId)
-	{
-		{
-			std::lock_guard lock(m_entriesMutex);
-			m_entries.erase(titleId);
-		}
-		if (m_onEntryChanged)
-			m_onEntryChanged(titleId);
+		std::lock_guard lock(m_entriesMutex);
+		m_entries = std::move(rebuiltEntries);
 	}
 
 	mutable std::mutex m_entriesMutex;
 	std::unordered_map<uint64_t, GameInfo> m_entries;
+	std::atomic<bool> m_needsRebuild{true};
 
 	uint64 m_titleListCallbackId = 0;
 	EntryChangedCallback m_onEntryChanged;
@@ -174,6 +183,7 @@ extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 	outRow->titleId = entry.titleId;
 	outRow->name = strdup(entry.name.c_str());
 	outRow->version = entry.version;
+	outRow->dlc = entry.dlc;
 	outRow->region = strdup(entry.region.c_str());
 	return true;
 }
