@@ -16,7 +16,7 @@ public func CemuCreateSwiftUIRootViewController() -> UnsafeMutableRawPointer {
 
 struct ContentView: View {
     var body: some View {
-        SwiftUIGameList()
+        GameList()
             .frame(minWidth: 900, minHeight: 480)
     }
 }

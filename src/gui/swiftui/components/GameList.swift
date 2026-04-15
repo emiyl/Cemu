@@ -9,32 +9,36 @@ private struct GameListColumn {
 
 private let gameListColumns: [GameListColumn] = [
     GameListColumn(title: "Title ID", width: 200, alignment: .leading),
-    GameListColumn(title: "Name", width: 640, alignment: .leading),
+    GameListColumn(title: "Name", width: 340, alignment: .leading),
+    GameListColumn(title: "Version", width: 80, alignment: .center),
+    GameListColumn(title: "Region", width: 80, alignment: .center),
 ]
 
-@_silgen_name("CemuSwiftUIGameListCreate")
-private func CemuSwiftUIGameListCreate()
+@_silgen_name("CemuGameListCreate")
+private func CemuGameListCreate()
 
-@_silgen_name("CemuSwiftUIGameListDestroy")
-private func CemuSwiftUIGameListDestroy()
+@_silgen_name("CemuGameListDestroy")
+private func CemuGameListDestroy()
 
-@_silgen_name("CemuSwiftUIGameListRefresh")
-private func CemuSwiftUIGameListRefresh()
+@_silgen_name("CemuGameListRefresh")
+private func CemuGameListRefresh()
 
-@_silgen_name("CemuSwiftUIGameListGetCount")
-private func CemuSwiftUIGameListGetCount() -> UInt64
+@_silgen_name("CemuGameListGetCount")
+private func CemuGameListGetCount() -> UInt64
 
-@_silgen_name("CemuSwiftUIGameListGetRow")
-private func CemuSwiftUIGameListGetRow(
-    _ index: UInt64, _ outRow: UnsafeMutablePointer<CemuSwiftUIGameListRow>
+@_silgen_name("CemuGameListGetRow")
+private func CemuGameListGetRow(
+    _ index: UInt64, _ outRow: UnsafeMutablePointer<CemuGameListRow>
 ) -> Bool
 
-private struct CemuSwiftUIGameListRow {
+private struct CemuGameListRow {
     var titleId: UInt64
     var name: UnsafePointer<CChar>?
+    var version: UInt32
+    var region: UnsafePointer<CChar>?
 }
 
-struct SwiftUIGameList: View {
+struct GameList: View {
     @State private var selectedTitleID: UInt64?
     @State private var showUpdatingBanner = false
     @State private var games: [GameItem] = []
@@ -83,11 +87,11 @@ struct SwiftUIGameList: View {
             }
         }
         .onAppear {
-            CemuSwiftUIGameListCreate()
+            CemuGameListCreate()
             loadGamesFromProvider()
         }
         .onDisappear {
-            CemuSwiftUIGameListDestroy()
+            CemuGameListDestroy()
         }
     }
 
@@ -96,7 +100,7 @@ struct SwiftUIGameList: View {
             showUpdatingBanner = true
         }
 
-        CemuSwiftUIGameListRefresh()
+        CemuGameListRefresh()
         loadGamesFromProvider()
 
         withAnimation(.easeInOut(duration: 0.2)) {
@@ -106,12 +110,23 @@ struct SwiftUIGameList: View {
 
     private func loadGamesFromProvider() {
         var newGames: [GameItem] = []
-        let count = CemuSwiftUIGameListGetCount()
+        let count = CemuGameListGetCount()
         for i in 0..<count {
-            var row = CemuSwiftUIGameListRow(titleId: 0, name: nil)
-            if CemuSwiftUIGameListGetRow(i, &row), let namePtr = row.name {
+            var row = CemuGameListRow(
+                titleId: 0,
+                name: nil,
+                version: 0,
+                region: nil
+            )
+            if CemuGameListGetRow(i, &row), let namePtr = row.name {
                 let name = String(cString: namePtr)
-                newGames.append(GameItem(titleID: row.titleId, name: name))
+                newGames.append(
+                    GameItem(
+                        titleID: row.titleId,
+                        name: name,
+                        version: row.version,
+                        region: row.region != nil ? String(cString: row.region!) : ""
+                    ))
             }
         }
         games = newGames
@@ -151,6 +166,16 @@ struct GameListRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: gameListColumns[1].width, alignment: gameListColumns[1].alignment)
+            Text(String(format: "%u", game.version))
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: gameListColumns[2].width, alignment: gameListColumns[2].alignment)
+            Text(game.region)
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: gameListColumns[3].width, alignment: gameListColumns[3].alignment)
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
@@ -195,6 +220,8 @@ struct GameListInfoBarView: View {
 struct GameItem: Identifiable {
     let titleID: UInt64
     let name: String
+    let version: UInt32
+    let region: String
 
     var id: UInt64 { titleID }
 }

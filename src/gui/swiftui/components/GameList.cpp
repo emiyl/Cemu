@@ -1,4 +1,4 @@
-#include "gui/swiftui/components/SwiftUIGameList.h"
+#include "gui/swiftui/components/GameList.h"
 
 #include "Cafe/IOSU/PDM/iosu_pdm.h"
 #include "Cafe/TitleList/GameInfo.h"
@@ -8,6 +8,7 @@
 
 #include <boost/algorithm/string.hpp>
 
+#include <cstdint>
 #include <mutex>
 
 struct GameInfo
@@ -15,7 +16,6 @@ struct GameInfo
 	uint64_t titleId;
 	std::string name;
 	uint32_t version;
-	bool hasDLC;
 	std::string region;
 };
 
@@ -95,7 +95,6 @@ class GameList
 		if (!GetConfig().GetGameListCustomName(titleId, info.name) || info.name.empty())
 			info.name = titleInfo.GetMetaTitleName();
 		info.version = titleInfo.GetAppTitleVersion();
-		info.hasDLC = false;
 		info.region = fmt::format("{}", static_cast<int>(titleInfo.GetMetaRegion()));
 
 		{
@@ -129,7 +128,7 @@ static GameListCallback g_callback = nullptr;
 
 // Functions exposed to SwiftUI
 
-extern "C" void CemuSwiftUIGameListCreate(void)
+extern "C" void CemuGameListCreate(void)
 {
 	if (g_gameList)
 		return;
@@ -142,27 +141,27 @@ extern "C" void CemuSwiftUIGameListCreate(void)
 	});
 }
 
-extern "C" void CemuSwiftUIGameListDestroy(void)
+extern "C" void CemuGameListDestroy(void)
 {
 	delete g_gameList;
 	g_gameList = nullptr;
 }
 
-extern "C" void CemuSwiftUIGameListRefresh(void)
+extern "C" void CemuGameListRefresh(void)
 {
 	if (g_gameList)
 		g_gameList->Refresh();
 	WindowSystem::RefreshGameList();
 }
 
-extern "C" size_t CemuSwiftUIGameListGetCount(void)
+extern "C" size_t CemuGameListGetCount(void)
 {
 	if (!g_gameList)
 		return 0;
 	return g_gameList->GetEntries().size();
 }
 
-extern "C" bool CemuSwiftUIGameListGetRow(size_t index, CemuSwiftUIGameListRow* outRow)
+extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 {
 	if (!g_gameList)
 		return false;
@@ -174,10 +173,12 @@ extern "C" bool CemuSwiftUIGameListGetRow(size_t index, CemuSwiftUIGameListRow* 
 	const auto& entry = entries[index];
 	outRow->titleId = entry.titleId;
 	outRow->name = strdup(entry.name.c_str());
+	outRow->version = entry.version;
+	outRow->region = strdup(entry.region.c_str());
 	return true;
 }
 
-extern "C" bool CemuSwiftUIGameListIsScanning(void)
+extern "C" bool CemuGameListIsScanning(void)
 {
 	return CafeTitleList::IsScanning();
 }

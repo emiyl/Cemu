@@ -5,9 +5,9 @@ add_library(CemuSwiftUiGui STATIC
   CemuApp.h
   WindowSystemSwiftUI.mm
   ContentView.swift
-  components/SwiftUIGameList.swift
-  components/SwiftUIGameList.cpp
-  components/SwiftUIGameList.h
+  components/GameList.swift
+  components/GameList.cpp
+  components/GameList.h
 )
 
 set_target_properties(CemuSwiftUiGui PROPERTIES
