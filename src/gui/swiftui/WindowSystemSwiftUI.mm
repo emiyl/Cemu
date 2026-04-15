@@ -1,5 +1,6 @@
 #include "Common/precompiled.h"
 
+#include "gui/swiftui/CemuApp.h"
 #include "interface/WindowSystem.h"
 
 #include "Cafe/CafeSystem.h"
@@ -230,6 +231,9 @@ void WindowSystem::ShowErrorDialog(
 }
 
 void WindowSystem::Create() {
+  CemuApp *cemuApp = new CemuApp();
+  cemuApp->OnInit();
+
   @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];
     [app setActivationPolicy:NSApplicationActivationPolicyRegular];

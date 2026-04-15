@@ -68,44 +68,51 @@ class GameList
   private:
 	static void OnTitleListEvent(CafeTitleListCallbackEvent* evt, void* ctx)
 	{
-		if (!ctx || !evt || !evt->titleInfo)
+		if (!ctx || !evt)
 			return;
-		if (evt->eventType != CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED &&
-			evt->eventType != CafeTitleListCallbackEvent::TYPE::TITLE_REMOVED)
-			return;
-
 		auto* gameList = reinterpret_cast<GameList*>(ctx);
-		gameList->OnTitleEvent(evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED,
-							   evt->titleInfo->GetAppTitleId());
+		gameList->HandleTitleListCallback(evt);
 	}
 
-	void OnTitleEvent(bool discovered, uint64_t titleId)
+	void HandleTitleListCallback(CafeTitleListCallbackEvent* evt)
 	{
-		if (discovered)
+		printf("Received title list callback event for title id %016llx, type %d\n", evt->titleInfo ? evt->titleInfo->GetAppTitleId() : 0, evt->eventType);
+		if (!evt->titleInfo)
+			return;
+
+		if (evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED)
+			OnTitleDiscovered(*evt->titleInfo);
+		else if (evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_REMOVED)
+			OnTitleRemoved(evt->titleInfo->GetAppTitleId());
+	}
+
+	void OnTitleDiscovered(const TitleInfo& titleInfo)
+	{
+		const uint64_t titleId = titleInfo.GetAppTitleId();
+
+		GameInfo info{};
+		info.titleId = titleId;
+		if (!GetConfig().GetGameListCustomName(titleId, info.name) || info.name.empty())
+			info.name = titleInfo.GetMetaTitleName();
+		info.version = titleInfo.GetAppTitleVersion();
+		info.hasDLC = false;
+		info.region = fmt::format("{}", static_cast<int>(titleInfo.GetMetaRegion()));
+
 		{
-			GameInfo2 gameInfo = CafeTitleList::GetGameInfo(titleId);
-			if (!gameInfo.IsValid())
-				return;
-
-			GameInfo info{};
-			info.titleId = titleId;
-			if (!GetConfig().GetGameListCustomName(titleId, info.name) || info.name.empty())
-				info.name = gameInfo.GetTitleName();
-			info.version = gameInfo.GetVersion();
-			info.hasDLC = gameInfo.HasAOC();
-			info.region = fmt::format("{}", static_cast<int>(gameInfo.GetRegion()));
-
-			{
-				std::lock_guard lock(m_entriesMutex);
-				m_entries[titleId] = info;
-			}
+			std::lock_guard lock(m_entriesMutex);
+			m_entries[titleId] = info;
 		}
-		else
+
+		if (m_onEntryChanged)
+			m_onEntryChanged(titleId);
+	}
+
+	void OnTitleRemoved(uint64_t titleId)
+	{
 		{
 			std::lock_guard lock(m_entriesMutex);
 			m_entries.erase(titleId);
 		}
-
 		if (m_onEntryChanged)
 			m_onEntryChanged(titleId);
 	}
@@ -117,40 +124,10 @@ class GameList
 	EntryChangedCallback m_onEntryChanged;
 };
 
-namespace
-{
-	std::string FormatPlayedTime(uint32 minutesPlayed)
-	{
-		if (minutesPlayed == 0)
-			return "";
-		if (minutesPlayed < 60)
-			return fmt::format("{} minute{}", minutesPlayed,
-							   minutesPlayed == 1 ? "" : "s");
-
-		const uint32 hours = minutesPlayed / 60;
-		const uint32 minutes = minutesPlayed % 60;
-		return fmt::format("{} hour{} {} minute{}", hours, hours == 1 ? "" : "s",
-						   minutes, minutes == 1 ? "" : "s");
-	}
-
-	std::string FormatLastPlayed(const iosu::pdm::GameListStat::LastPlayDate& date)
-	{
-		if (date.year == 0)
-			return "never";
-		return fmt::format("{}/{}/{}", date.month, date.day, date.year);
-	}
-
-	std::string GetDisplayName(TitleId titleId, GameInfo2& gameInfo)
-	{
-		std::string customName;
-		if (GetConfig().GetGameListCustomName(titleId, customName) && !customName.empty())
-			return customName;
-		return gameInfo.GetTitleName();
-	}
-} // namespace
-
 static GameList* g_gameList = nullptr;
 static GameListCallback g_callback = nullptr;
+
+// Functions exposed to SwiftUI
 
 extern "C" void CemuSwiftUIGameListCreate(void)
 {
@@ -195,9 +172,12 @@ extern "C" bool CemuSwiftUIGameListGetRow(size_t index, CemuSwiftUIGameListRow* 
 		return false;
 
 	const auto& entry = entries[index];
-	// outRow->titleId = 0;
-	// outRow->name = strdup(std::string("Hello").c_str());
 	outRow->titleId = entry.titleId;
 	outRow->name = strdup(entry.name.c_str());
 	return true;
+}
+
+extern "C" bool CemuSwiftUIGameListIsScanning(void)
+{
+	return CafeTitleList::IsScanning();
 }
