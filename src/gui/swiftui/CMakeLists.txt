@@ -3,6 +3,9 @@ enable_language(Swift)
 add_library(CemuSwiftUiGui STATIC
   WindowSystemSwiftUI.mm
   ContentView.swift
+  components/SwiftUIGameList.swift
+  components/SwiftUIGameList.cpp
+  components/SwiftUIGameList.h
 )
 
 set_target_properties(CemuSwiftUiGui PROPERTIES
