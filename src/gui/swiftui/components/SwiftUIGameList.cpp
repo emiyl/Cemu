@@ -8,7 +8,6 @@
 
 #include <boost/algorithm/string.hpp>
 
-#include <atomic>
 #include <mutex>
 
 struct GameInfo
@@ -20,15 +19,6 @@ struct GameInfo
 	std::string region;
 };
 
-namespace TitleList
-{
-	using Callback = std::function<void(bool discovered, uint64_t titleId)>;
-	int RegisterCallback(Callback callback);
-	void UnregisterCallback(int callbackId);
-	void Refresh();
-	bool GetInfo(uint64_t titleId, GameInfo& out);
-} // namespace TitleList
-
 class GameList
 {
   public:
@@ -36,16 +26,13 @@ class GameList
 
 	GameList()
 	{
-		m_titleListCallbackId = TitleList::RegisterCallback([this](bool discovered, uint64_t titleId) {
-			OnTitleEvent(discovered, titleId);
-		});
+		m_titleListCallbackId = CafeTitleList::RegisterCallback(&GameList::OnTitleListEvent, this);
 	}
 
 	~GameList()
 	{
-		TitleList::UnregisterCallback(m_titleListCallbackId);
-
-		m_running = false;
+		if (m_titleListCallbackId != 0)
+			CafeTitleList::UnregisterCallback(m_titleListCallbackId);
 	}
 
 	void Refresh()
@@ -55,11 +42,11 @@ class GameList
 			m_entries.clear();
 		}
 
-		TitleList::UnregisterCallback(m_titleListCallbackId);
-		m_titleListCallbackId = TitleList::RegisterCallback(
-			[this](bool discovered, uint64_t titleId) {
-				OnTitleEvent(discovered, titleId);
-			});
+		CafeTitleList::Refresh();
+
+		if (m_titleListCallbackId != 0)
+			CafeTitleList::UnregisterCallback(m_titleListCallbackId);
+		m_titleListCallbackId = CafeTitleList::RegisterCallback(&GameList::OnTitleListEvent, this);
 	}
 
 	std::vector<GameInfo> GetEntries()
@@ -79,13 +66,34 @@ class GameList
 	}
 
   private:
+	static void OnTitleListEvent(CafeTitleListCallbackEvent* evt, void* ctx)
+	{
+		if (!ctx || !evt || !evt->titleInfo)
+			return;
+		if (evt->eventType != CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED &&
+			evt->eventType != CafeTitleListCallbackEvent::TYPE::TITLE_REMOVED)
+			return;
+
+		auto* gameList = reinterpret_cast<GameList*>(ctx);
+		gameList->OnTitleEvent(evt->eventType == CafeTitleListCallbackEvent::TYPE::TITLE_DISCOVERED,
+							   evt->titleInfo->GetAppTitleId());
+	}
+
 	void OnTitleEvent(bool discovered, uint64_t titleId)
 	{
 		if (discovered)
 		{
-			GameInfo info;
-			if (!TitleList::GetInfo(titleId, info))
+			GameInfo2 gameInfo = CafeTitleList::GetGameInfo(titleId);
+			if (!gameInfo.IsValid())
 				return;
+
+			GameInfo info{};
+			info.titleId = titleId;
+			if (!GetConfig().GetGameListCustomName(titleId, info.name) || info.name.empty())
+				info.name = gameInfo.GetTitleName();
+			info.version = gameInfo.GetVersion();
+			info.hasDLC = gameInfo.HasAOC();
+			info.region = fmt::format("{}", static_cast<int>(gameInfo.GetRegion()));
 
 			{
 				std::lock_guard lock(m_entriesMutex);
@@ -105,9 +113,7 @@ class GameList
 	mutable std::mutex m_entriesMutex;
 	std::unordered_map<uint64_t, GameInfo> m_entries;
 
-	std::atomic<bool> m_running{true};
-
-	int m_titleListCallbackId = -1;
+	uint64 m_titleListCallbackId = 0;
 	EntryChangedCallback m_onEntryChanged;
 };
 
