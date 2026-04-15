@@ -30,6 +30,8 @@ extern CemuAppDelegate *g_app_delegate;
 bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut);
 }
 
+CemuApp *app;
+
 @implementation CemuAppDelegate
 
 - (void)setupMenuBar {
@@ -76,6 +78,8 @@ bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut);
 }
 
 - (void)quitApp:(id)sender {
+  app->OnExit();
+  printf("Terminating application...\n");
   [NSApp terminate:sender];
 }
 
@@ -231,8 +235,8 @@ void WindowSystem::ShowErrorDialog(
 }
 
 void WindowSystem::Create() {
-  CemuApp *cemuApp = new CemuApp();
-  cemuApp->OnInit();
+  app = new CemuApp();
+  app->OnInit();
 
   @autoreleasepool {
     NSApplication *app = [NSApplication sharedApplication];

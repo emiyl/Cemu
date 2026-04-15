@@ -9,7 +9,7 @@ private struct GameListColumn {
 
 private let gameListColumns: [GameListColumn] = [
     GameListColumn(title: "Title ID", width: 200, alignment: .leading),
-    GameListColumn(title: "Name", width: 340, alignment: .leading),
+    GameListColumn(title: "Name", width: 640, alignment: .leading),
 ]
 
 @_silgen_name("CemuSwiftUIGameListCreate")
