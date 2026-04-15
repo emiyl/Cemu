@@ -116,7 +116,6 @@ void CemuApp::InitializeExistingMLCOrFail(fs::path mlc)
 
 bool CemuApp::OnInit()
 {
-	printf("%s\n", BUILD_VERSION_WITH_NAME_STRING);
 	std::set<fs::path> failedWriteAccess;
 	DeterminePaths(failedWriteAccess);
 

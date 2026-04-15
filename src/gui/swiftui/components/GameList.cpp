@@ -81,7 +81,6 @@ class GameList
 
 	void HandleTitleListCallback(CafeTitleListCallbackEvent* evt)
 	{
-		printf("Received title list callback event for title id %016llx, type %d\n", evt->titleInfo ? evt->titleInfo->GetAppTitleId() : 0, evt->eventType);
 		if (!evt->titleInfo)
 			return;
 
