@@ -1,24 +1,28 @@
 #include "gui/swiftui/components/GameList.h"
 
-#include "Cafe/IOSU/PDM/iosu_pdm.h"
+#include "Cafe/Filesystem/fsc.h"
 #include "Cafe/TitleList/GameInfo.h"
 #include "Cafe/TitleList/TitleList.h"
 #include "config/CemuConfig.h"
 #include "interface/WindowSystem.h"
+#include "util/helpers/helpers.h"
 
 #include <boost/algorithm/string.hpp>
 
 #include <atomic>
+#include <cstring>
 #include <cstdint>
+#include <cstdlib>
 #include <mutex>
 
 struct GameInfo
 {
 	uint64_t titleId;
+	std::vector<uint8_t> iconData;
 	std::string name;
 	uint16_t version;
 	uint16_t dlc;
-	std::string region;
+	int16_t region;
 };
 
 class GameList
@@ -43,6 +47,7 @@ class GameList
 		{
 			std::lock_guard lock(m_entriesMutex);
 			m_entries.clear();
+			m_iconDataCache.clear();
 		}
 
 		CafeTitleList::Refresh();
@@ -99,6 +104,11 @@ class GameList
 
 		auto titleIds = CafeTitleList::GetAllTitleIds();
 		std::unordered_map<uint64_t, GameInfo> rebuiltEntries;
+		std::unordered_map<uint64_t, std::vector<uint8_t>> rebuiltIconCache;
+		{
+			std::lock_guard lock(m_entriesMutex);
+			rebuiltIconCache = m_iconDataCache;
+		}
 
 		for (const auto titleId : titleIds)
 		{
@@ -110,21 +120,61 @@ class GameList
 			GameInfo info{};
 
 			info.titleId = baseTitleId;
+			if (auto cachedIcon = rebuiltIconCache.find(baseTitleId); cachedIcon != rebuiltIconCache.end())
+				info.iconData = cachedIcon->second;
+			else
+			{
+				info.iconData = LoadIconDataForTitle(baseTitleId);
+				rebuiltIconCache.emplace(baseTitleId, info.iconData);
+			}
 			if (!GetConfig().GetGameListCustomName(baseTitleId, info.name) || info.name.empty())
 				info.name = gameInfo.GetTitleName();
 			info.version = gameInfo.GetVersion();
 			info.dlc = gameInfo.GetAOCVersion();
-			info.region = fmt::format("{}", static_cast<int>(gameInfo.GetRegion()));
+			info.region = static_cast<int16_t>(gameInfo.GetRegion());
 
 			rebuiltEntries[baseTitleId] = std::move(info);
 		}
 
 		std::lock_guard lock(m_entriesMutex);
 		m_entries = std::move(rebuiltEntries);
+		m_iconDataCache = std::move(rebuiltIconCache);
+	}
+
+	std::vector<uint8_t> LoadIconDataForTitle(uint64_t titleId) const
+	{
+		TitleInfo titleInfo;
+		if (!CafeTitleList::GetFirstByTitleId(titleId, titleInfo))
+			return {};
+
+		const std::string tempMountPath = TitleInfo::GetUniqueTempMountingPath();
+		if (!titleInfo.Mount(tempMountPath, "", FSC_PRIORITY_BASE))
+			return {};
+
+		auto tgaData = fsc_extractFile((tempMountPath + "/meta/iconTex.tga").c_str());
+		if (!tgaData)
+		{
+			tgaData = fsc_extractFile((tempMountPath + "/meta/iconTex.tga.gz").c_str());
+			if (tgaData)
+			{
+				auto decompressed = zlibDecompress(*tgaData, 70 * 1024);
+				if (decompressed)
+					tgaData = std::move(decompressed);
+				else
+					tgaData.reset();
+			}
+		}
+
+		titleInfo.Unmount(tempMountPath);
+		if (!tgaData)
+			return {};
+
+		return *tgaData;
 	}
 
 	mutable std::mutex m_entriesMutex;
 	std::unordered_map<uint64_t, GameInfo> m_entries;
+	std::unordered_map<uint64_t, std::vector<uint8_t>> m_iconDataCache;
 	std::atomic<bool> m_needsRebuild{true};
 
 	uint64 m_titleListCallbackId = 0;
@@ -171,7 +221,7 @@ extern "C" size_t CemuGameListGetCount(void)
 
 extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 {
-	if (!g_gameList)
+	if (!g_gameList || !outRow)
 		return false;
 
 	const auto entries = g_gameList->GetEntries();
@@ -180,11 +230,28 @@ extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 
 	const auto& entry = entries[index];
 	outRow->titleId = entry.titleId;
+	outRow->iconData = nullptr;
+	outRow->iconSize = 0;
+	if (!entry.iconData.empty())
+	{
+		auto* iconCopy = static_cast<uint8_t*>(malloc(entry.iconData.size()));
+		if (iconCopy)
+		{
+			memcpy(iconCopy, entry.iconData.data(), entry.iconData.size());
+			outRow->iconData = iconCopy;
+			outRow->iconSize = entry.iconData.size();
+		}
+	}
 	outRow->name = strdup(entry.name.c_str());
 	outRow->version = entry.version;
 	outRow->dlc = entry.dlc;
-	outRow->region = strdup(entry.region.c_str());
+	outRow->region = entry.region;
 	return true;
+}
+
+extern "C" void CemuGameListFreeBuffer(void* ptr)
+{
+	free(ptr);
 }
 
 extern "C" bool CemuGameListIsScanning(void)

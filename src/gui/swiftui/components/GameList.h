@@ -8,10 +8,12 @@
 typedef struct
 {
 	uint64_t titleId;
+	const uint8_t* iconData;
+	size_t iconSize;
 	const char* name;
 	uint16_t version;
 	uint16_t dlc;
-	const char* region;
+	int16_t region;
 } CemuGameListRow;
 
 typedef void (*GameListCallback)(uint64_t titleId);
@@ -21,3 +23,4 @@ extern "C" void CemuGameListDestroy(void);
 extern "C" void CemuGameListRefresh(void);
 extern "C" size_t CemuGameListGetCount(void);
 extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow);
+extern "C" void CemuGameListFreeBuffer(void* ptr);

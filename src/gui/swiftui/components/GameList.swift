@@ -8,11 +8,12 @@ private struct GameListColumn {
 }
 
 private let gameListColumns: [GameListColumn] = [
-    GameListColumn(title: "Title ID", width: 200, alignment: .leading),
+    GameListColumn(title: "", width: 48, alignment: .center),
     GameListColumn(title: "Name", width: 340, alignment: .leading),
     GameListColumn(title: "Version", width: 80, alignment: .center),
     GameListColumn(title: "DLC", width: 80, alignment: .center),
     GameListColumn(title: "Region", width: 80, alignment: .center),
+    GameListColumn(title: "Title ID", width: 200, alignment: .leading),
 ]
 
 @_silgen_name("CemuGameListCreate")
@@ -32,16 +33,22 @@ private func CemuGameListGetRow(
     _ index: UInt64, _ outRow: UnsafeMutablePointer<CemuGameListRow>
 ) -> Bool
 
+@_silgen_name("CemuGameListFreeBuffer")
+private func CemuGameListFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
+
 private struct CemuGameListRow {
     var titleId: UInt64
+    var iconData: UnsafePointer<UInt8>?
+    var iconSize: UInt
     var name: UnsafePointer<CChar>?
     var version: UInt16
     var dlc: UInt16
-    var region: UnsafePointer<CChar>?
+    var region: Int16
 }
 
 struct GameItem: Identifiable {
     let titleID: UInt64
+    let icon: NSImage?
     let name: String
     let version: UInt16
     let dlc: UInt16
@@ -126,21 +133,37 @@ struct GameList: View {
         for i in 0..<count {
             var row = CemuGameListRow(
                 titleId: 0,
+                iconData: nil,
+                iconSize: 0,
                 name: nil,
                 version: 0,
                 dlc: 0,
-                region: nil
+                region: 0
             )
-            if CemuGameListGetRow(i, &row), let namePtr = row.name {
-                let name = String(cString: namePtr)
-                newGames.append(
-                    GameItem(
-                        titleID: row.titleId,
-                        name: name,
-                        version: row.version,
-                        dlc: row.dlc,
-                        region: row.region != nil ? String(cString: row.region!) : ""
-                    ))
+            if CemuGameListGetRow(i, &row) {
+                if let iconPtr = row.iconData {
+                    defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr)) }
+                }
+                if let namePtr = row.name {
+                    defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
+
+                    let name = String(cString: namePtr)
+                    let region = row.region != 0 ? String(format: "%d", row.region) : ""
+                    var image: NSImage?
+                    if let iconData = row.iconData, row.iconSize > 0 {
+                        let iconDataBuffer = Data(bytes: iconData, count: Int(row.iconSize))
+                        image = NSImage(data: iconDataBuffer)
+                    }
+                    newGames.append(
+                        GameItem(
+                            titleID: row.titleId,
+                            icon: image,
+                            name: name,
+                            version: row.version,
+                            dlc: row.dlc,
+                            region: region
+                        ))
+                }
             }
         }
         games = newGames
@@ -170,11 +193,21 @@ struct GameListRowView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            Text(String(format: "%016llx", game.titleID))
-                .font(.system(size: 12))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .frame(width: gameListColumns[0].width, alignment: gameListColumns[0].alignment)
+            Group {
+                if let icon = game.icon {
+                    Image(nsImage: icon)
+                        .resizable()
+                        .interpolation(.high)
+                        .scaledToFit()
+                        .frame(width: 32, height: 32)
+                } else {
+                    Image(systemName: "gamecontroller")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .frame(width: 32, height: 32)
+                }
+            }
+            .frame(width: gameListColumns[0].width, alignment: gameListColumns[0].alignment)
             Text(game.name)
                 .font(.system(size: 12))
                 .lineLimit(1)
@@ -195,6 +228,11 @@ struct GameListRowView: View {
                 .lineLimit(1)
                 .truncationMode(.tail)
                 .frame(width: gameListColumns[4].width, alignment: gameListColumns[4].alignment)
+            Text(String(format: "%016llx", game.titleID))
+                .font(.system(size: 12))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: gameListColumns[5].width, alignment: gameListColumns[5].alignment)
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
