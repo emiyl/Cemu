@@ -1,10 +1,15 @@
 #include "Common/precompiled.h"
 
 #include "gui/swiftui/CemuApp.h"
+#include "gui/swiftui/MainWindow.h"
 #include "interface/WindowSystem.h"
 
 #include "Cafe/CafeSystem.h"
-#include "Cafe/TitleList/TitleInfo.h"
+#include "Cafe/HW/Latte/Renderer/Renderer.h"
+#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#if ENABLE_METAL
+#include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
+#endif
 #include "Cafe/TitleList/TitleList.h"
 #include "config/ActiveSettings.h"
 
@@ -13,7 +18,7 @@
 
 extern "C" void *CemuCreateSwiftUIRootViewController(void);
 
-@interface CemuAppDelegate : NSObject <NSApplicationDelegate>
+@interface CemuAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>
 - (void)setupMenuBar;
 - (void)quitApp:(id)sender;
 - (void)openGame:(id)sender;
@@ -27,12 +32,110 @@ namespace {
 extern WindowSystem::WindowInfo g_window_info;
 extern NSWindow *g_main_window;
 extern CemuAppDelegate *g_app_delegate;
-bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut);
+extern NSView *g_renderer_host_view;
+
+void UpdateMainWindowMetricsFromRendererHostView() {
+  if (!g_renderer_host_view)
+    return;
+
+  const NSRect points = g_renderer_host_view.bounds;
+  const NSRect pixels = [g_renderer_host_view convertRectToBacking:points];
+
+  const int width = std::max(1, (int)std::lround(points.size.width));
+  const int height = std::max(1, (int)std::lround(points.size.height));
+  const int physWidth = std::max(1, (int)std::lround(pixels.size.width));
+  const int physHeight = std::max(1, (int)std::lround(pixels.size.height));
+
+  g_window_info.width = width;
+  g_window_info.height = height;
+  g_window_info.phys_width = physWidth;
+  g_window_info.phys_height = physHeight;
+  g_window_info.dpi_scale = (double)physWidth / (double)width;
+}
+
+void ResizeMainRendererIfNeeded() {
+  if (!g_renderer)
+    return;
+
+#if ENABLE_METAL
+  if (ActiveSettings::GetGraphicsAPI() != kVulkan && g_renderer->GetType() == RendererAPI::Metal) {
+    const Vector2i size{(int)g_window_info.width.load(), (int)g_window_info.height.load()};
+    MetalRenderer::GetInstance()->ResizeLayer(size, true);
+  }
+#endif
+}
+
+void SetMainWindowTitle(NSString* title) {
+  if (!g_main_window || !title)
+    return;
+
+  if ([NSThread isMainThread]) {
+    [g_main_window setTitle:title];
+    return;
+  }
+
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (g_main_window)
+      [g_main_window setTitle:title];
+  });
+}
+
+bool InitializeRendererForMainView(NSView* mainView, int width, int height, std::string& errorOut) {
+  if (!mainView) {
+    errorOut = "Main window view is not available.";
+    return false;
+  }
+
+  auto& windowInfo = WindowSystem::GetWindowInfo();
+  windowInfo.window_main.backend = WindowSystem::WindowHandleInfo::Backend::Cocoa;
+  windowInfo.window_main.display = nullptr;
+  windowInfo.window_main.surface = (__bridge void*)mainView;
+  // Reuse the main view as render canvas handle in SwiftUI mode.
+  windowInfo.canvas_main = windowInfo.window_main;
+
+  if (g_renderer)
+    return true;
+
+  const auto api = ActiveSettings::GetGraphicsAPI();
+  const Vector2i size{width, height};
+
+  try {
+    if (api == kVulkan) {
+      g_renderer = std::make_unique<VulkanRenderer>();
+      VulkanRenderer::GetInstance()->InitializeSurface(size, true);
+      return true;
+    }
+
+#if ENABLE_METAL
+    g_renderer = std::make_unique<MetalRenderer>();
+    MetalRenderer::GetInstance()->InitializeLayer(size, true);
+    return true;
+#else
+    errorOut = "Only Vulkan renderer is supported in SwiftUI build.";
+    return false;
+#endif
+  } catch (const std::exception& ex) {
+    errorOut = fmt::format("Failed to initialize renderer: {}", ex.what());
+    return false;
+  }
+}
 }
 
 CemuApp *app;
 
 @implementation CemuAppDelegate
+
+- (void)windowDidResize:(NSNotification *)notification {
+  (void)notification;
+  UpdateMainWindowMetricsFromRendererHostView();
+  ResizeMainRendererIfNeeded();
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification {
+  (void)notification;
+  UpdateMainWindowMetricsFromRendererHostView();
+  ResizeMainRendererIfNeeded();
+}
 
 - (void)setupMenuBar {
   NSMenu *mainMenu = [[NSMenu alloc] init];
@@ -84,12 +187,6 @@ CemuApp *app;
 }
 
 - (void)openGame:(id)sender {
-  if (CafeSystem::IsTitleRunning()) {
-    WindowSystem::ShowErrorDialog("A title is already running.",
-                                  "Launch blocked");
-    return;
-  }
-
   NSOpenPanel *panel = [NSOpenPanel openPanel];
   [panel setCanChooseFiles:YES];
   [panel setCanChooseDirectories:NO];
@@ -114,18 +211,16 @@ CemuApp *app;
 
   fs::path launchPath = _utf8ToPath(std::string(pathString.UTF8String));
   std::string errorMessage;
-  if (!PrepareLaunchPath(launchPath, errorMessage)) {
+  if (!swiftui::MainWindow::RequestLaunchGame(
+          launchPath, swiftui::MainWindow::LaunchInitiatedBy::kMenu,
+          errorMessage)) {
     WindowSystem::ShowErrorDialog(errorMessage, "Failed to launch game");
     return;
   }
 
-  WindowSystem::UpdateWindowTitles(false, true, 0.0);
-  CafeSystem::LaunchForegroundTitle();
-  WindowSystem::NotifyGameLoaded();
-
   const std::string titleName = CafeSystem::GetForegroundTitleName();
   if (!titleName.empty() && g_main_window) {
-    [g_main_window setTitle:[NSString stringWithUTF8String:titleName.c_str()]];
+    SetMainWindowTitle([NSString stringWithUTF8String:titleName.c_str()]);
   }
 }
 
@@ -170,50 +265,24 @@ namespace {
 WindowSystem::WindowInfo g_window_info{};
 NSWindow *g_main_window = nil;
 CemuAppDelegate *g_app_delegate = nil;
-
-bool PrepareLaunchPath(const fs::path &launchPath, std::string &errorOut) {
-  TitleInfo launchTitle{launchPath};
-  if (launchTitle.IsValid()) {
-    CafeTitleList::AddTitleFromPath(launchPath);
-
-    TitleId baseTitleId;
-    if (!CafeTitleList::FindBaseTitleId(launchTitle.GetAppTitleId(),
-                                        baseTitleId)) {
-      errorOut =
-          "Unable to launch game because the base files were not found.";
-      return false;
-    }
-
-    CafeSystem::PREPARE_STATUS_CODE status =
-        CafeSystem::PrepareForegroundTitle(baseTitleId);
-    if (status == CafeSystem::PREPARE_STATUS_CODE::UNABLE_TO_MOUNT) {
-      errorOut =
-          "Unable to mount title. Make sure your game paths are valid and "
-          "refresh the game list.";
-      return false;
-    }
-    if (status != CafeSystem::PREPARE_STATUS_CODE::SUCCESS) {
-      errorOut = "Failed to prepare the selected game for launch.";
-      return false;
-    }
-    return true;
-  }
-
-  CafeTitleFileType fileType = DetermineCafeSystemFileType(launchPath);
-  if (fileType == CafeTitleFileType::RPX || fileType == CafeTitleFileType::ELF) {
-    CafeSystem::PREPARE_STATUS_CODE status =
-        CafeSystem::PrepareForegroundTitleFromStandaloneRPX(launchPath);
-    if (status != CafeSystem::PREPARE_STATUS_CODE::SUCCESS) {
-      errorOut = "Failed to prepare standalone RPX/ELF executable.";
-      return false;
-    }
-    return true;
-  }
-
-  errorOut = "Unsupported or invalid Wii U title path.";
-  return false;
-}
+NSView *g_renderer_host_view = nil;
+NSView *g_swiftui_overlay_view = nil;
+NSViewController *g_root_view_controller = nil;
 }  // namespace
+
+extern "C" bool CemuSwiftUILaunchTitleById(uint64_t titleId) {
+  std::string errorMessage;
+  if (!swiftui::MainWindow::RequestLaunchGameByTitleId(titleId, errorMessage)) {
+    WindowSystem::ShowErrorDialog(errorMessage, "Failed to launch game");
+    return false;
+  }
+
+  const std::string titleName = CafeSystem::GetForegroundTitleName();
+  if (!titleName.empty() && g_main_window) {
+    SetMainWindowTitle([NSString stringWithUTF8String:titleName.c_str()]);
+  }
+  return true;
+}
 
 void WindowSystem::ShowErrorDialog(
     std::string_view message, std::string_view title,
@@ -259,7 +328,21 @@ void WindowSystem::Create() {
                                                     defer:NO];
     [g_main_window setTitle:@"Cemu"];
     [g_main_window setTitlebarAppearsTransparent:NO];
+    [g_main_window setDelegate:g_app_delegate];
     
+    NSView *windowContentView = [g_main_window contentView];
+    if (!windowContentView) {
+      WindowSystem::ShowErrorDialog("Main window content view is not available.", "Window setup failed");
+      [NSApp terminate:nil];
+      return;
+    }
+
+    g_renderer_host_view = [[NSView alloc] initWithFrame:windowContentView.bounds];
+    g_renderer_host_view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    g_renderer_host_view.wantsLayer = YES;
+    g_renderer_host_view.layer.backgroundColor = NSColor.clearColor.CGColor;
+    [windowContentView addSubview:g_renderer_host_view positioned:NSWindowBelow relativeTo:nil];
+
     // Instantiate SwiftUI-backed root controller via explicit Swift C symbol.
     NSViewController *rootViewController = nil;
     if (void *swiftControllerPtr = CemuCreateSwiftUIRootViewController()) {
@@ -286,18 +369,29 @@ void WindowSystem::Create() {
 
       rootViewController.view = contentView;
     }
-    
-    [g_main_window setContentViewController:rootViewController];
+    g_root_view_controller = rootViewController;
+    g_swiftui_overlay_view = rootViewController.view;
+    g_swiftui_overlay_view.frame = windowContentView.bounds;
+    g_swiftui_overlay_view.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [windowContentView addSubview:g_swiftui_overlay_view positioned:NSWindowAbove relativeTo:g_renderer_host_view];
+
+    UpdateMainWindowMetricsFromRendererHostView();
+
+    std::string rendererError;
+    if (!InitializeRendererForMainView(g_renderer_host_view,
+                       (int)g_window_info.width.load(),
+                       (int)g_window_info.height.load(),
+                                       rendererError)) {
+      WindowSystem::ShowErrorDialog(rendererError, "Renderer initialization failed");
+      [NSApp terminate:nil];
+      return;
+    }
     
     [g_main_window makeKeyAndOrderFront:nil];
     [app activateIgnoringOtherApps:YES];
 
     g_window_info.app_active = true;
-    g_window_info.width = static_cast<int32_t>(frame.size.width);
-    g_window_info.height = static_cast<int32_t>(frame.size.height);
-    g_window_info.phys_width = g_window_info.width.load();
-    g_window_info.phys_height = g_window_info.height.load();
-    g_window_info.dpi_scale = 1.0;
+    UpdateMainWindowMetricsFromRendererHostView();
     g_window_info.pad_open = false;
     g_window_info.pad_width = 0;
     g_window_info.pad_height = 0;
@@ -306,10 +400,7 @@ void WindowSystem::Create() {
     g_window_info.pad_dpi_scale = 1.0;
     g_window_info.is_fullscreen = false;
     g_window_info.debugger_focused = false;
-    g_window_info.window_main.backend =
-        WindowSystem::WindowHandleInfo::Backend::Cocoa;
-    g_window_info.window_main.display = nullptr;
-    g_window_info.window_main.surface = (__bridge void *)g_main_window;
+    // window_main/canvas_main surfaces are initialized in InitializeRendererForMainView()
 
     [NSApp run];
   }
@@ -331,7 +422,7 @@ void WindowSystem::UpdateWindowTitles(bool isIdle, bool isLoading, double fps) {
   else
     title = [NSString stringWithFormat:@"Cemu - FPS: %.2f", fps];
 
-  [g_main_window setTitle:title];
+  SetMainWindowTitle(title);
 }
 
 void WindowSystem::GetWindowSize(int &w, int &h) {
@@ -385,9 +476,19 @@ std::string WindowSystem::GetKeyCodeName(uint32 key) {
 
 bool WindowSystem::InputConfigWindowHasFocus() { return false; }
 
-void WindowSystem::NotifyGameLoaded() {}
+void WindowSystem::NotifyGameLoaded() {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (g_swiftui_overlay_view)
+      g_swiftui_overlay_view.hidden = YES;
+  });
+}
 
-void WindowSystem::NotifyGameExited() {}
+void WindowSystem::NotifyGameExited() {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (g_swiftui_overlay_view)
+      g_swiftui_overlay_view.hidden = NO;
+  });
+}
 
 void WindowSystem::RefreshGameList() { CafeTitleList::Refresh(); }
 

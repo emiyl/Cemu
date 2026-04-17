@@ -3,6 +3,8 @@ enable_language(Swift)
 add_library(CemuSwiftUiGui STATIC
   CemuApp.cpp
   CemuApp.h
+  MainWindow.cpp
+  MainWindow.h
   WindowSystemSwiftUI.mm
   ContentView.swift
   components/GameList.swift

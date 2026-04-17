@@ -50,6 +50,9 @@ private func CemuGameListGetRow(
 @_silgen_name("CemuGameListFreeBuffer")
 private func CemuGameListFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
 
+@_silgen_name("CemuSwiftUILaunchTitleById")
+private func CemuSwiftUILaunchTitleById(_ titleId: UInt64) -> Bool
+
 private struct CemuGameListRow {
     var titleId: UInt64
     var iconData: UnsafePointer<UInt8>?
@@ -75,6 +78,7 @@ struct GameList: View {
     @State private var selectedTitleID: UInt64?
     @State private var showUpdatingBanner = false
     @State private var games: [GameItem] = []
+    @State private var keyEventMonitor: Any?
 
     var body: some View {
         GeometryReader { proxy in
@@ -94,8 +98,18 @@ struct GameList: View {
                                     isAlternateRow: index.isMultiple(of: 2)
                                 )
                                 .contentShape(Rectangle())
+                                .onTapGesture(count: 2) {
+                                    selectedTitleID = game.titleID
+                                    launchGame(titleID: game.titleID)
+                                }
                                 .onTapGesture {
                                     selectedTitleID = game.titleID
+                                }
+                                .contextMenu {
+                                    Button("Start") {
+                                        selectedTitleID = game.titleID
+                                        launchGame(titleID: game.titleID)
+                                    }
                                 }
                                 Divider()
                             }
@@ -126,9 +140,11 @@ struct GameList: View {
         .onAppear {
             CemuGameListCreate()
             loadGamesFromProvider()
+            installEnterKeyMonitorIfNeeded()
         }
         .onDisappear {
             CemuGameListDestroy()
+            removeEnterKeyMonitor()
         }
     }
 
@@ -143,6 +159,40 @@ struct GameList: View {
         withAnimation(.easeInOut(duration: 0.2)) {
             showUpdatingBanner = false
         }
+    }
+
+    private func launchGame(titleID: UInt64) {
+        _ = CemuSwiftUILaunchTitleById(titleID)
+    }
+
+    private func launchSelectedGame() {
+        guard let selectedTitleID else {
+            return
+        }
+        launchGame(titleID: selectedTitleID)
+    }
+
+    private func installEnterKeyMonitorIfNeeded() {
+        guard keyEventMonitor == nil else {
+            return
+        }
+
+        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
+            if event.keyCode == 36 || event.keyCode == 76 {
+                launchSelectedGame()
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeEnterKeyMonitor() {
+        guard let keyEventMonitor else {
+            return
+        }
+
+        NSEvent.removeMonitor(keyEventMonitor)
+        self.keyEventMonitor = nil
     }
 
     private func loadGamesFromProvider() {
@@ -163,7 +213,7 @@ struct GameList: View {
                 if let namePtr = row.name {
                     defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
                     if let iconPtr {
-                        defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr)) }
+                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
                     }
 
                     let name = String(cString: namePtr)
