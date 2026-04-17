@@ -15,8 +15,10 @@ public:
 	virtual ~RenderCanvas() = default;
 
 	virtual bool Initialize(NSView* windowSurfaceView, NSView* canvasView,
-							int width, int height, std::string& errorOut) = 0;
-	virtual void Resize(NSView* canvasView, int width, int height) = 0;
+							int width, int height, bool mainWindow,
+							std::string& errorOut) = 0;
+	virtual void Resize(NSView* canvasView, int width, int height,
+						bool mainWindow) = 0;
 };
 
 std::unique_ptr<RenderCanvas> CreateVulkanCanvas();

@@ -20,16 +20,31 @@ extern "C" void *CemuCreateSwiftUIRootViewController(void);
 - (void)openGame:(id)sender;
 - (void)openPreferences:(id)sender;
 - (void)toggleFullscreen:(id)sender;
+- (void)togglePadView:(id)sender;
 - (void)showHelp:(id)sender;
 - (void)showAbout:(id)sender;
+@end
+
+@interface CemuPadWindowDelegate : NSObject <NSWindowDelegate>
 @end
 
 namespace {
 extern WindowSystem::WindowInfo g_window_info;
 extern NSWindow *g_main_window;
 extern CemuAppDelegate *g_app_delegate;
+extern CemuPadWindowDelegate *g_pad_window_delegate;
 extern NSView *g_renderer_host_view;
 extern std::unique_ptr<RenderCanvas> g_renderer_canvas;
+extern NSWindow *g_pad_window;
+extern NSView *g_pad_renderer_host_view;
+extern std::unique_ptr<RenderCanvas> g_pad_renderer_canvas;
+extern NSMenuItem *g_pad_view_menu_item;
+extern bool g_pad_view_requested;
+
+constexpr int kPadMinWidth = 320;
+constexpr int kPadMinHeight = 180;
+constexpr int kPadDefaultWidth = 854;
+constexpr int kPadDefaultHeight = 480;
 
 void UpdateMainWindowMetricsFromRendererHostView() {
   if (!g_renderer_host_view)
@@ -56,7 +71,57 @@ void ResizeMainRendererIfNeeded() {
 
   g_renderer_canvas->Resize(g_renderer_host_view,
                             (int)g_window_info.width.load(),
-                            (int)g_window_info.height.load());
+                            (int)g_window_info.height.load(), true);
+}
+
+void UpdatePadWindowMetricsFromRendererHostView() {
+  if (!g_pad_renderer_host_view)
+    return;
+
+  const NSRect points = g_pad_renderer_host_view.bounds;
+  const NSRect pixels = [g_pad_renderer_host_view convertRectToBacking:points];
+
+  const int width = std::max(1, (int)std::lround(points.size.width));
+  const int height = std::max(1, (int)std::lround(points.size.height));
+  const int physWidth = std::max(1, (int)std::lround(pixels.size.width));
+  const int physHeight = std::max(1, (int)std::lround(pixels.size.height));
+
+  g_window_info.pad_width = width;
+  g_window_info.pad_height = height;
+  g_window_info.phys_pad_width = physWidth;
+  g_window_info.phys_pad_height = physHeight;
+  g_window_info.pad_dpi_scale = (double)physWidth / (double)width;
+}
+
+void ResizePadRendererIfNeeded() {
+  if (!g_pad_renderer_canvas || !g_pad_renderer_host_view)
+    return;
+
+  g_pad_renderer_canvas->Resize(g_pad_renderer_host_view,
+                                (int)g_window_info.pad_width.load(),
+                                (int)g_window_info.pad_height.load(), false);
+}
+
+bool IsPadWindowFullscreen(NSWindow *window) {
+  if (!window)
+    return false;
+
+  return (window.styleMask & NSWindowStyleMaskFullScreen) != 0;
+}
+
+void UpdatePadRestoreStateFromWindow(NSWindow *window) {
+  if (!window)
+    return;
+
+  const bool isMaximized = [window isZoomed] && !IsPadWindowFullscreen(window);
+  g_window_info.pad_maximized = isMaximized;
+  if (!isMaximized && !IsPadWindowFullscreen(window)) {
+    const NSRect frame = window.frame;
+    g_window_info.restored_pad_x = (int)std::lround(frame.origin.x);
+    g_window_info.restored_pad_y = (int)std::lround(frame.origin.y);
+    g_window_info.restored_pad_width = (int)std::lround(frame.size.width);
+    g_window_info.restored_pad_height = (int)std::lround(frame.size.height);
+  }
 }
 
 void SetMainWindowTitle(NSString *title) {
@@ -104,10 +169,11 @@ void UpdateTitleFromGame() {
 
 bool InitializeRendererForMainView(NSView *mainView, int width, int height,
                                    std::string &errorOut) {
-  if (!mainView) {
+  if (!mainView || !g_main_window) {
     errorOut = "Main window view is not available.";
     return false;
   }
+
   const auto api = ActiveSettings::GetGraphicsAPI();
   if (api == kVulkan)
     g_renderer_canvas = CreateVulkanCanvas();
@@ -122,12 +188,165 @@ bool InitializeRendererForMainView(NSView *mainView, int width, int height,
   }
 
   try {
-    return g_renderer_canvas->Initialize(
-        g_main_window ? [g_main_window contentView] : mainView, mainView, width,
-        height, errorOut);
+    return g_renderer_canvas->Initialize([g_main_window contentView], mainView,
+                                         width, height, true, errorOut);
   } catch (const std::exception &ex) {
     errorOut = fmt::format("Failed to initialize renderer: {}", ex.what());
     return false;
+  }
+}
+
+bool InitializeRendererForPadView(NSView *padView, int width, int height,
+                                  std::string &errorOut) {
+  if (!padView || !g_pad_window) {
+    errorOut = "Pad window view is not available.";
+    return false;
+  }
+
+  const auto api = ActiveSettings::GetGraphicsAPI();
+  if (api == kVulkan)
+    g_pad_renderer_canvas = CreateVulkanCanvas();
+#if ENABLE_METAL
+  else
+    g_pad_renderer_canvas = CreateMetalCanvas();
+#endif
+
+  if (!g_pad_renderer_canvas) {
+    errorOut = "Pad renderer canvas could not be created.";
+    return false;
+  }
+
+  try {
+    return g_pad_renderer_canvas->Initialize(
+        [g_pad_window contentView], padView, width, height, false, errorOut);
+  } catch (const std::exception &ex) {
+    errorOut = fmt::format("Failed to initialize renderer: {}", ex.what());
+    return false;
+  }
+}
+
+void UpdatePadViewMenuState() {
+  if (!g_pad_view_menu_item)
+    return;
+
+  [g_pad_view_menu_item setEnabled:YES];
+  [g_pad_view_menu_item setState:g_pad_view_requested ? NSControlStateValueOn
+                                                      : NSControlStateValueOff];
+}
+
+void DestroyPadWindowIfExists() {
+  if (g_pad_window)
+    UpdatePadRestoreStateFromWindow(g_pad_window);
+
+  g_pad_renderer_canvas.reset();
+  g_pad_renderer_host_view = nil;
+
+  if (g_pad_window) {
+    [g_pad_window setDelegate:nil];
+    [g_pad_window orderOut:nil];
+    [g_pad_window close];
+  }
+  g_pad_window = nil;
+
+  g_window_info.pad_open = false;
+  g_window_info.pad_width = 0;
+  g_window_info.pad_height = 0;
+  g_window_info.phys_pad_width = 0;
+  g_window_info.phys_pad_height = 0;
+  g_window_info.pad_dpi_scale = 1.0;
+}
+
+bool CreatePadWindowIfNeeded(std::string &errorOut) {
+  if (g_pad_window)
+    return true;
+
+  if (!CafeSystem::IsTitleRunning())
+    return true;
+
+  const int restoredWidth = (int)g_window_info.restored_pad_width.load();
+  const int restoredHeight = (int)g_window_info.restored_pad_height.load();
+  const bool hasRestoredSize =
+      restoredWidth >= kPadMinWidth && restoredHeight >= kPadMinHeight;
+
+  const int width = hasRestoredSize ? restoredWidth : kPadDefaultWidth;
+  const int height = hasRestoredSize ? restoredHeight : kPadDefaultHeight;
+  NSRect frame = NSMakeRect(200.0, 200.0, (CGFloat)width, (CGFloat)height);
+
+  if (g_window_info.restored_pad_x.load() != -1 &&
+      g_window_info.restored_pad_y.load() != -1) {
+    frame.origin.x = (CGFloat)g_window_info.restored_pad_x.load();
+    frame.origin.y = (CGFloat)g_window_info.restored_pad_y.load();
+  }
+
+  const NSWindowStyleMask style =
+      NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
+      NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable;
+
+  g_pad_window = [[NSWindow alloc] initWithContentRect:frame
+                                             styleMask:style
+                                               backing:NSBackingStoreBuffered
+                                                 defer:NO];
+  if (!g_pad_window) {
+    errorOut = "Failed to create GamePad window.";
+    return false;
+  }
+
+  [g_pad_window setTitle:@"GamePad View"];
+  [g_pad_window setContentMinSize:NSMakeSize(kPadMinWidth, kPadMinHeight)];
+  [g_pad_window setTitlebarAppearsTransparent:NO];
+  if (!g_pad_window_delegate)
+    g_pad_window_delegate = [[CemuPadWindowDelegate alloc] init];
+  [g_pad_window setDelegate:g_pad_window_delegate];
+
+  NSView *contentView = [g_pad_window contentView];
+  if (!contentView) {
+    errorOut = "GamePad content view is not available.";
+    DestroyPadWindowIfExists();
+    return false;
+  }
+
+  g_pad_renderer_host_view = [[NSView alloc] initWithFrame:contentView.bounds];
+  g_pad_renderer_host_view.autoresizingMask =
+      NSViewWidthSizable | NSViewHeightSizable;
+  g_pad_renderer_host_view.wantsLayer = YES;
+  g_pad_renderer_host_view.layer.backgroundColor = NSColor.blackColor.CGColor;
+  [contentView addSubview:g_pad_renderer_host_view];
+
+  [g_pad_window makeKeyAndOrderFront:nil];
+  [contentView layoutSubtreeIfNeeded];
+
+  UpdatePadWindowMetricsFromRendererHostView();
+  if (!InitializeRendererForPadView(
+          g_pad_renderer_host_view, (int)g_window_info.pad_width.load(),
+          (int)g_window_info.pad_height.load(), errorOut)) {
+    DestroyPadWindowIfExists();
+    return false;
+  }
+
+  if (g_window_info.pad_maximized)
+    [g_pad_window zoom:nil];
+
+  g_window_info.pad_open = true;
+  return true;
+}
+
+void ApplyPadWindowRequestedState() {
+  UpdatePadViewMenuState();
+  if (!CafeSystem::IsTitleRunning()) {
+    DestroyPadWindowIfExists();
+    return;
+  }
+
+  if (!g_pad_view_requested) {
+    DestroyPadWindowIfExists();
+    return;
+  }
+
+  std::string errorOut;
+  if (!CreatePadWindowIfNeeded(errorOut)) {
+    g_pad_view_requested = false;
+    UpdatePadViewMenuState();
+    WindowSystem::ShowErrorDialog(errorOut, "GamePad window failed");
   }
 }
 } // namespace
@@ -190,6 +409,13 @@ CemuApp *app;
                           action:@selector(toggleFullscreen:)
                    keyEquivalent:@"f"];
   [fullscreenItem setTarget:self];
+
+  g_pad_view_menu_item = [viewMenu addItemWithTitle:@"Separate GamePad View"
+                                             action:@selector(togglePadView:)
+                                      keyEquivalent:@""];
+  [g_pad_view_menu_item setTarget:self];
+  [g_pad_view_menu_item setState:NSControlStateValueOff];
+  [g_pad_view_menu_item setEnabled:NO];
 
   // Help menu
   NSMenu *helpMenu = [[NSMenu alloc] initWithTitle:@"Help"];
@@ -270,6 +496,12 @@ CemuApp *app;
   g_window_info.is_fullscreen = !g_window_info.is_fullscreen.load();
 }
 
+- (void)togglePadView:(id)sender {
+  (void)sender;
+  g_pad_view_requested = !g_pad_view_requested;
+  ApplyPadWindowRequestedState();
+}
+
 - (void)showHelp:(id)sender {
   NSURL *helpURL = [NSURL URLWithString:@"https://wiki.cemu.info"];
   if (helpURL)
@@ -287,12 +519,63 @@ CemuApp *app;
 
 @end
 
+@implementation CemuPadWindowDelegate
+
+- (void)windowDidResize:(NSNotification *)notification {
+  if (!g_pad_window || notification.object != g_pad_window)
+    return;
+  UpdatePadRestoreStateFromWindow(g_pad_window);
+  UpdatePadWindowMetricsFromRendererHostView();
+  ResizePadRendererIfNeeded();
+}
+
+- (void)windowDidMove:(NSNotification *)notification {
+  if (!g_pad_window || notification.object != g_pad_window)
+    return;
+  UpdatePadRestoreStateFromWindow(g_pad_window);
+}
+
+- (void)windowDidChangeBackingProperties:(NSNotification *)notification {
+  if (!g_pad_window || notification.object != g_pad_window)
+    return;
+  UpdatePadWindowMetricsFromRendererHostView();
+  ResizePadRendererIfNeeded();
+}
+
+- (void)windowWillClose:(NSNotification *)notification {
+  if (!g_pad_window || notification.object != g_pad_window)
+    return;
+
+  UpdatePadRestoreStateFromWindow(g_pad_window);
+  g_pad_renderer_canvas.reset();
+  g_pad_renderer_host_view = nil;
+  g_pad_window = nil;
+
+  g_window_info.pad_open = false;
+  g_window_info.pad_width = 0;
+  g_window_info.pad_height = 0;
+  g_window_info.phys_pad_width = 0;
+  g_window_info.phys_pad_height = 0;
+  g_window_info.pad_dpi_scale = 1.0;
+
+  g_pad_view_requested = false;
+  UpdatePadViewMenuState();
+}
+
+@end
+
 namespace {
 WindowSystem::WindowInfo g_window_info{};
 NSWindow *g_main_window = nil;
 CemuAppDelegate *g_app_delegate = nil;
+CemuPadWindowDelegate *g_pad_window_delegate = nil;
 NSView *g_renderer_host_view = nil;
 std::unique_ptr<RenderCanvas> g_renderer_canvas;
+NSWindow *g_pad_window = nil;
+NSView *g_pad_renderer_host_view = nil;
+std::unique_ptr<RenderCanvas> g_pad_renderer_canvas;
+NSMenuItem *g_pad_view_menu_item = nil;
+bool g_pad_view_requested = false;
 NSView *g_swiftui_overlay_view = nil;
 NSViewController *g_root_view_controller = nil;
 NSViewController *g_game_view_controller = nil;
@@ -438,8 +721,14 @@ void WindowSystem::Create() {
     g_window_info.phys_pad_width = 0;
     g_window_info.phys_pad_height = 0;
     g_window_info.pad_dpi_scale = 1.0;
+    g_window_info.pad_maximized = false;
+    g_window_info.restored_pad_x = -1;
+    g_window_info.restored_pad_y = -1;
+    g_window_info.restored_pad_width = -1;
+    g_window_info.restored_pad_height = -1;
     g_window_info.is_fullscreen = false;
     g_window_info.debugger_focused = false;
+    UpdatePadViewMenuState();
     // window_main/canvas_main surfaces are initialized in
     // InitializeRendererForMainView()
 
@@ -472,8 +761,13 @@ void WindowSystem::GetWindowSize(int &w, int &h) {
 }
 
 void WindowSystem::GetPadWindowSize(int &w, int &h) {
-  w = 0;
-  h = 0;
+  if (g_window_info.pad_open) {
+    w = g_window_info.pad_width;
+    h = g_window_info.pad_height;
+  } else {
+    w = 0;
+    h = 0;
+  }
 }
 
 void WindowSystem::GetWindowPhysSize(int &w, int &h) {
@@ -482,15 +776,22 @@ void WindowSystem::GetWindowPhysSize(int &w, int &h) {
 }
 
 void WindowSystem::GetPadWindowPhysSize(int &w, int &h) {
-  w = 0;
-  h = 0;
+  if (g_window_info.pad_open) {
+    w = g_window_info.phys_pad_width;
+    h = g_window_info.phys_pad_height;
+  } else {
+    w = 0;
+    h = 0;
+  }
 }
 
 double WindowSystem::GetWindowDPIScale() { return g_window_info.dpi_scale; }
 
-double WindowSystem::GetPadDPIScale() { return 1.0; }
+double WindowSystem::GetPadDPIScale() {
+  return g_window_info.pad_open ? g_window_info.pad_dpi_scale.load() : 1.0;
+}
 
-bool WindowSystem::IsPadWindowOpen() { return false; }
+bool WindowSystem::IsPadWindowOpen() { return g_window_info.pad_open; }
 
 bool WindowSystem::IsKeyDown(uint32 key) {
   return g_window_info.get_keystate(key);
@@ -554,6 +855,7 @@ void WindowSystem::NotifyGameLoaded() {
 
     UpdateMainWindowMetricsFromRendererHostView();
     ResizeMainRendererIfNeeded();
+    ApplyPadWindowRequestedState();
   });
 }
 
@@ -561,6 +863,8 @@ void WindowSystem::NotifyGameExited() {
   dispatch_async(dispatch_get_main_queue(), ^{
     if (!g_main_window || !g_root_view_controller || !g_renderer_host_view)
       return;
+
+    DestroyPadWindowIfExists();
 
     if (g_swiftui_toolbar && g_main_window.toolbar != g_swiftui_toolbar)
       [g_main_window setToolbar:g_swiftui_toolbar];
@@ -587,6 +891,7 @@ void WindowSystem::NotifyGameExited() {
 
     UpdateMainWindowMetricsFromRendererHostView();
     ResizeMainRendererIfNeeded();
+    UpdatePadViewMenuState();
   });
 }
 
