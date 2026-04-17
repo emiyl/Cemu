@@ -11,9 +11,9 @@ typedef struct
 	const uint8_t* iconData;
 	size_t iconSize;
 	const char* name;
+	const char* region;
 	uint16_t version;
 	uint16_t dlc;
-	int16_t region;
 } CemuGameListRow;
 
 typedef void (*GameListCallback)(uint64_t titleId);

@@ -22,8 +22,41 @@ struct GameInfo
 	std::string name;
 	uint16_t version;
 	uint16_t dlc;
-	int16_t region;
+	std::string region;
 };
+
+static const char* RegionEnumKey(CafeConsoleRegion region)
+{
+	switch (region)
+	{
+	case CafeConsoleRegion::JPN:
+		return "JPN";
+	case CafeConsoleRegion::USA:
+		return "USA";
+	case CafeConsoleRegion::EUR:
+		return "EUR";
+	case CafeConsoleRegion::AUS_DEPR:
+		return "AUS_DEPR";
+	case CafeConsoleRegion::CHN:
+		return "CHN";
+	case CafeConsoleRegion::KOR:
+		return "KOR";
+	case CafeConsoleRegion::TWN:
+		return "TWN";
+	case CafeConsoleRegion::Auto:
+		return "Auto";
+	default:
+		return "";
+	}
+}
+
+static std::string RegionToSwiftUIString(CafeConsoleRegion region)
+{
+	std::string key = RegionEnumKey(region);
+	if (const auto underscorePos = key.find('_'); underscorePos != std::string::npos)
+		key.resize(underscorePos);
+	return key;
+}
 
 class GameList
 {
@@ -131,7 +164,7 @@ class GameList
 				info.name = gameInfo.GetTitleName();
 			info.version = gameInfo.GetVersion();
 			info.dlc = gameInfo.GetAOCVersion();
-			info.region = static_cast<int16_t>(gameInfo.GetRegion());
+			info.region = RegionToSwiftUIString(static_cast<CafeConsoleRegion>(gameInfo.GetRegion()));
 
 			rebuiltEntries[baseTitleId] = std::move(info);
 		}
@@ -243,9 +276,9 @@ extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 		}
 	}
 	outRow->name = strdup(entry.name.c_str());
+	outRow->region = strdup(entry.region.c_str());
 	outRow->version = entry.version;
 	outRow->dlc = entry.dlc;
-	outRow->region = entry.region;
 	return true;
 }
 

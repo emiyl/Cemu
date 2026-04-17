@@ -58,9 +58,9 @@ private struct CemuGameListRow {
     var iconData: UnsafePointer<UInt8>?
     var iconSize: UInt
     var name: UnsafePointer<CChar>?
+    var region: UnsafePointer<CChar>?
     var version: UInt16
     var dlc: UInt16
-    var region: Int16
 }
 
 struct GameItem: Identifiable {
@@ -204,24 +204,28 @@ struct GameList: View {
                 iconData: nil,
                 iconSize: 0,
                 name: nil,
+                region: nil,
                 version: 0,
-                dlc: 0,
-                region: 0
+                dlc: 0
             )
             if CemuGameListGetRow(i, &row) {
                 let iconPtr = row.iconData
+                let regionPtr = row.region
                 if let namePtr = row.name {
                     defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
-                    if let iconPtr {
-                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
-                    }
 
                     let name = String(cString: namePtr)
-                    let region = row.region != 0 ? String(format: "%d", row.region) : ""
+                    let region = regionPtr.map { String(cString: $0) } ?? ""
                     var image: NSImage?
                     if let iconData = iconPtr, row.iconSize > 0 {
                         let iconDataBuffer = Data(bytes: iconData, count: Int(row.iconSize))
                         image = NSImage(data: iconDataBuffer)
+                    }
+                    if let iconPtr {
+                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                    }
+                    if let regionPtr {
+                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
                     }
                     newGames.append(
                         GameItem(
@@ -232,8 +236,13 @@ struct GameList: View {
                             dlc: row.dlc,
                             region: region
                         ))
-                } else if let iconPtr {
-                    CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                } else {
+                    if let iconPtr {
+                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                    }
+                    if let regionPtr {
+                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                    }
                 }
             }
         }
