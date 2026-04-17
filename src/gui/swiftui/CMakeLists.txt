@@ -5,6 +5,9 @@ add_library(CemuSwiftUiGui STATIC
   CemuApp.h
   MainWindow.cpp
   MainWindow.h
+  canvas/RenderCanvas.h
+  canvas/MetalCanvas.mm
+  canvas/VulkanCanvas.mm
   RegionStrings.cpp
   RegionStrings.h
   WindowSystemSwiftUI.mm

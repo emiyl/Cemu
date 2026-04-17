@@ -2,14 +2,10 @@
 
 #include "gui/swiftui/CemuApp.h"
 #include "gui/swiftui/MainWindow.h"
+#include "gui/swiftui/canvas/RenderCanvas.h"
 #include "interface/WindowSystem.h"
 
 #include "Cafe/CafeSystem.h"
-#include "Cafe/HW/Latte/Renderer/Renderer.h"
-#include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
-#if ENABLE_METAL
-#include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
-#endif
 #include "Cafe/TitleList/TitleList.h"
 #include "config/ActiveSettings.h"
 
@@ -33,6 +29,7 @@ extern WindowSystem::WindowInfo g_window_info;
 extern NSWindow *g_main_window;
 extern CemuAppDelegate *g_app_delegate;
 extern NSView *g_renderer_host_view;
+extern std::unique_ptr<RenderCanvas> g_renderer_canvas;
 
 void UpdateMainWindowMetricsFromRendererHostView() {
   if (!g_renderer_host_view)
@@ -54,17 +51,12 @@ void UpdateMainWindowMetricsFromRendererHostView() {
 }
 
 void ResizeMainRendererIfNeeded() {
-  if (!g_renderer)
+  if (!g_renderer_canvas || !g_renderer_host_view)
     return;
 
-#if ENABLE_METAL
-  if (ActiveSettings::GetGraphicsAPI() != kVulkan &&
-      g_renderer->GetType() == RendererAPI::Metal) {
-    const Vector2i size{(int)g_window_info.width.load(),
-                        (int)g_window_info.height.load()};
-    MetalRenderer::GetInstance()->ResizeLayer(size, true);
-  }
-#endif
+  g_renderer_canvas->Resize(g_renderer_host_view,
+                            (int)g_window_info.width.load(),
+                            (int)g_window_info.height.load());
 }
 
 void SetMainWindowTitle(NSString *title) {
@@ -82,42 +74,36 @@ void SetMainWindowTitle(NSString *title) {
   });
 }
 
+void UpdateTitleFromGame() {
+  const std::string titleName = CafeSystem::GetForegroundTitleName();
+  if (!titleName.empty() && g_main_window) {
+    SetMainWindowTitle([NSString stringWithUTF8String:titleName.c_str()]);
+  }
+}
+
 bool InitializeRendererForMainView(NSView *mainView, int width, int height,
                                    std::string &errorOut) {
   if (!mainView) {
     errorOut = "Main window view is not available.";
     return false;
   }
-
-  auto &windowInfo = WindowSystem::GetWindowInfo();
-  windowInfo.window_main.backend =
-      WindowSystem::WindowHandleInfo::Backend::Cocoa;
-  windowInfo.window_main.display = nullptr;
-  windowInfo.window_main.surface = (__bridge void *)mainView;
-  // Reuse the main view as render canvas handle in SwiftUI mode.
-  windowInfo.canvas_main = windowInfo.window_main;
-
-  if (g_renderer)
-    return true;
-
   const auto api = ActiveSettings::GetGraphicsAPI();
-  const Vector2i size{width, height};
+  if (api == kVulkan)
+    g_renderer_canvas = CreateVulkanCanvas();
+#if ENABLE_METAL
+  else
+    g_renderer_canvas = CreateMetalCanvas();
+#endif
+
+  if (!g_renderer_canvas) {
+    errorOut = "Renderer canvas could not be created.";
+    return false;
+  }
 
   try {
-    if (api == kVulkan) {
-      g_renderer = std::make_unique<VulkanRenderer>();
-      VulkanRenderer::GetInstance()->InitializeSurface(size, true);
-      return true;
-    }
-
-#if ENABLE_METAL
-    g_renderer = std::make_unique<MetalRenderer>();
-    MetalRenderer::GetInstance()->InitializeLayer(size, true);
-    return true;
-#else
-    errorOut = "Only Vulkan renderer is supported in SwiftUI build.";
-    return false;
-#endif
+    return g_renderer_canvas->Initialize(
+        g_main_window ? [g_main_window contentView] : mainView, mainView, width,
+        height, errorOut);
   } catch (const std::exception &ex) {
     errorOut = fmt::format("Failed to initialize renderer: {}", ex.what());
     return false;
@@ -240,10 +226,7 @@ CemuApp *app;
     return;
   }
 
-  const std::string titleName = CafeSystem::GetForegroundTitleName();
-  if (!titleName.empty() && g_main_window) {
-    SetMainWindowTitle([NSString stringWithUTF8String:titleName.c_str()]);
-  }
+  UpdateTitleFromGame();
 }
 
 - (void)openPreferences:(id)sender {
@@ -288,6 +271,7 @@ WindowSystem::WindowInfo g_window_info{};
 NSWindow *g_main_window = nil;
 CemuAppDelegate *g_app_delegate = nil;
 NSView *g_renderer_host_view = nil;
+std::unique_ptr<RenderCanvas> g_renderer_canvas;
 NSView *g_swiftui_overlay_view = nil;
 NSViewController *g_root_view_controller = nil;
 NSViewController *g_game_view_controller = nil;
@@ -300,10 +284,7 @@ extern "C" bool CemuSwiftUILaunchTitleById(uint64_t titleId) {
     return false;
   }
 
-  const std::string titleName = CafeSystem::GetForegroundTitleName();
-  if (!titleName.empty() && g_main_window) {
-    SetMainWindowTitle([NSString stringWithUTF8String:titleName.c_str()]);
-  }
+  UpdateTitleFromGame();
   return true;
 }
 
@@ -312,10 +293,10 @@ void WindowSystem::ShowErrorDialog(
     std::optional<WindowSystem::ErrorCategory> /*errorCategory*/) {
   @autoreleasepool {
     NSAlert *alert = [[NSAlert alloc] init];
-    std::string titleCopy(title);
     NSString *alertTitle =
-        titleCopy.empty() ? @"Error"
-                          : [NSString stringWithUTF8String:titleCopy.c_str()];
+        title.empty()
+            ? @"Error"
+            : [NSString stringWithUTF8String:std::string(title).c_str()];
     NSString *alertMessage =
         [NSString stringWithUTF8String:std::string(message).c_str()];
     [alert setAlertStyle:NSAlertStyleCritical];
@@ -428,7 +409,6 @@ void WindowSystem::Create() {
     [app activateIgnoringOtherApps:YES];
 
     g_window_info.app_active = true;
-    UpdateMainWindowMetricsFromRendererHostView();
     g_window_info.pad_open = false;
     g_window_info.pad_width = 0;
     g_window_info.pad_height = 0;
