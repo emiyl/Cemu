@@ -290,6 +290,7 @@ CemuAppDelegate *g_app_delegate = nil;
 NSView *g_renderer_host_view = nil;
 NSView *g_swiftui_overlay_view = nil;
 NSViewController *g_root_view_controller = nil;
+NSViewController *g_game_view_controller = nil;
 } // namespace
 
 extern "C" bool CemuSwiftUILaunchTitleById(uint64_t titleId) {
@@ -338,7 +339,7 @@ void WindowSystem::Create() {
     [app setDelegate:g_app_delegate];
     [g_app_delegate setupMenuBar];
 
-    const NSRect frame = NSMakeRect(120.0, 120.0, 1280.0, 720.0);
+    const NSRect frame = NSMakeRect(120.0, 120.0, 960.0, 540.0);
     const NSWindowStyleMask style =
         NSWindowStyleMaskTitled | NSWindowStyleMaskClosable |
         NSWindowStyleMaskMiniaturizable | NSWindowStyleMaskResizable |
@@ -351,26 +352,9 @@ void WindowSystem::Create() {
     [g_main_window setTitle:@"Cemu"];
     [g_main_window setTitlebarAppearsTransparent:NO];
     [g_main_window setDelegate:g_app_delegate];
-    [g_main_window setContentSize:NSMakeSize(960, 540)];
-    [g_main_window setContentMinSize:NSMakeSize(960, 540)];
-
-    NSView *windowContentView = [g_main_window contentView];
-    if (!windowContentView) {
-      WindowSystem::ShowErrorDialog(
-          "Main window content view is not available.", "Window setup failed");
-      [NSApp terminate:nil];
-      return;
-    }
-
-    g_renderer_host_view =
-        [[NSView alloc] initWithFrame:windowContentView.bounds];
-    g_renderer_host_view.autoresizingMask =
-        NSViewWidthSizable | NSViewHeightSizable;
-    g_renderer_host_view.wantsLayer = YES;
-    g_renderer_host_view.layer.backgroundColor = NSColor.clearColor.CGColor;
-    [windowContentView addSubview:g_renderer_host_view
-                       positioned:NSWindowBelow
-                       relativeTo:nil];
+    [g_main_window center];
+    [g_main_window setContentSize:NSMakeSize(960, 490)];
+    [g_main_window setContentMinSize:NSMakeSize(960, 490)];
 
     // Instantiate SwiftUI-backed root controller via explicit Swift C symbol.
     NSViewController *rootViewController = nil;
@@ -401,14 +385,32 @@ void WindowSystem::Create() {
 
       rootViewController.view = contentView;
     }
+
+    [g_main_window setContentViewController:rootViewController];
+
+    NSView *windowContentView = [g_main_window contentView];
+    if (!windowContentView) {
+      WindowSystem::ShowErrorDialog(
+          "Main window content view is not available.", "Window setup failed");
+      [NSApp terminate:nil];
+      return;
+    }
+
     g_root_view_controller = rootViewController;
     g_swiftui_overlay_view = rootViewController.view;
     g_swiftui_overlay_view.frame = windowContentView.bounds;
     g_swiftui_overlay_view.autoresizingMask =
         NSViewWidthSizable | NSViewHeightSizable;
-    [windowContentView addSubview:g_swiftui_overlay_view
-                       positioned:NSWindowAbove
-                       relativeTo:g_renderer_host_view];
+
+    g_renderer_host_view =
+        [[NSView alloc] initWithFrame:windowContentView.bounds];
+    g_renderer_host_view.autoresizingMask =
+        NSViewWidthSizable | NSViewHeightSizable;
+    g_renderer_host_view.wantsLayer = YES;
+    g_renderer_host_view.layer.backgroundColor = NSColor.clearColor.CGColor;
+    [windowContentView addSubview:g_renderer_host_view
+                       positioned:NSWindowBelow
+                       relativeTo:g_swiftui_overlay_view];
 
     UpdateMainWindowMetricsFromRendererHostView();
 
@@ -514,15 +516,61 @@ bool WindowSystem::InputConfigWindowHasFocus() { return false; }
 
 void WindowSystem::NotifyGameLoaded() {
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (g_swiftui_overlay_view)
-      g_swiftui_overlay_view.hidden = YES;
+    if (!g_main_window || !g_renderer_host_view)
+      return;
+
+    if (!g_game_view_controller) {
+      NSViewController *controller = [[NSViewController alloc] init];
+      NSView *gameView =
+          [[NSView alloc] initWithFrame:g_main_window.contentView.bounds];
+      gameView.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+      gameView.wantsLayer = YES;
+      gameView.layer.backgroundColor = NSColor.blackColor.CGColor;
+      controller.view = gameView;
+      g_game_view_controller = controller;
+    }
+
+    [g_renderer_host_view removeFromSuperview];
+    [g_main_window setContentViewController:g_game_view_controller];
+
+    NSView *gameContentView = [g_main_window contentView];
+    if (!gameContentView)
+      return;
+
+    g_renderer_host_view.frame = gameContentView.bounds;
+    [gameContentView addSubview:g_renderer_host_view
+                     positioned:NSWindowAbove
+                     relativeTo:nil];
+
+    UpdateMainWindowMetricsFromRendererHostView();
+    ResizeMainRendererIfNeeded();
   });
 }
 
 void WindowSystem::NotifyGameExited() {
   dispatch_async(dispatch_get_main_queue(), ^{
-    if (g_swiftui_overlay_view)
-      g_swiftui_overlay_view.hidden = NO;
+    if (!g_main_window || !g_root_view_controller || !g_renderer_host_view)
+      return;
+
+    [g_renderer_host_view removeFromSuperview];
+    [g_main_window setContentViewController:g_root_view_controller];
+
+    NSView *windowContentView = [g_main_window contentView];
+    if (!windowContentView)
+      return;
+
+    g_swiftui_overlay_view = g_root_view_controller.view;
+    g_swiftui_overlay_view.frame = windowContentView.bounds;
+    g_swiftui_overlay_view.autoresizingMask =
+        NSViewWidthSizable | NSViewHeightSizable;
+
+    g_renderer_host_view.frame = windowContentView.bounds;
+    [windowContentView addSubview:g_renderer_host_view
+                       positioned:NSWindowBelow
+                       relativeTo:g_swiftui_overlay_view];
+
+    UpdateMainWindowMetricsFromRendererHostView();
+    ResizeMainRendererIfNeeded();
   });
 }
 
