@@ -83,6 +83,7 @@ void UpdatePadRestoreStateFromWindow(NSWindow *window);
 void SetMainWindowTitle(NSString *title);
 void SetMainWindowUnifiedTitleToolbar(bool enabled);
 void UpdateTitleFromGame();
+NSView *CreateInputCaptureHostView(NSRect frame, bool mainWindow);
 
 bool InitializeRendererForMainView(NSView *mainView, int width, int height,
                                    std::string &errorOut);

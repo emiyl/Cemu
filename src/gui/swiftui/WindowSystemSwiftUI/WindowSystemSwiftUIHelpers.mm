@@ -5,8 +5,174 @@
 #include "Cafe/CafeSystem.h"
 #include "config/ActiveSettings.h"
 #include "gui/swiftui/canvas/RenderCanvas.h"
+#include "input/InputManager.h"
+
+@interface CemuInputCaptureView : NSView
+- (instancetype)initWithFrame:(NSRect)frame mainWindow:(BOOL)mainWindow;
+@end
+
+@implementation CemuInputCaptureView {
+  BOOL _mainWindow;
+  NSPanGestureRecognizer *_panGesture;
+}
+
+- (instancetype)initWithFrame:(NSRect)frame mainWindow:(BOOL)mainWindow {
+  self = [super initWithFrame:frame];
+  if (!self)
+    return nil;
+
+  _mainWindow = mainWindow;
+  _panGesture = [[NSPanGestureRecognizer alloc]
+      initWithTarget:self
+              action:@selector(handlePanGesture:)];
+  [self addGestureRecognizer:_panGesture];
+
+  return self;
+}
+
+- (BOOL)acceptsFirstResponder {
+  return YES;
+}
+
+- (void)updateTrackingAreas {
+  [super updateTrackingAreas];
+
+  NSTrackingAreaOptions options = NSTrackingMouseMoved |
+                                  NSTrackingActiveInKeyWindow |
+                                  NSTrackingInVisibleRect;
+  NSTrackingArea *trackingArea = [[NSTrackingArea alloc] initWithRect:NSZeroRect
+                                                              options:options
+                                                                owner:self
+                                                             userInfo:nil];
+  [self addTrackingArea:trackingArea];
+}
+
+- (glm::ivec2)physicalPositionForPoint:(NSPoint)point {
+  NSPoint backingPoint = [self convertPointToBacking:point];
+  const NSRect backingBounds = [self convertRectToBacking:self.bounds];
+  const double width = backingBounds.size.width;
+  const double height = backingBounds.size.height;
+
+  const double x = std::clamp(backingPoint.x, 0.0, std::max(0.0, width));
+  const double yBottomUp =
+      std::clamp(backingPoint.y, 0.0, std::max(0.0, height));
+  const double yTopDown = std::max(0.0, height - yBottomUp);
+
+  return {(int)std::lround(x), (int)std::lround(yTopDown)};
+}
+
+- (void)withMouseInfo:(void (^)(InputManager::MouseInfo &))handler {
+  auto &input = InputManager::instance();
+  InputManager::MouseInfo &mouse =
+      _mainWindow ? input.m_main_mouse : input.m_pad_mouse;
+  handler(mouse);
+}
+
+- (void)withTouchInfo:(void (^)(InputManager::MouseInfo &))handler {
+  auto &input = InputManager::instance();
+  InputManager::MouseInfo &touch =
+      _mainWindow ? input.m_main_touch : input.m_pad_touch;
+  handler(touch);
+}
+
+- (void)updateMousePositionFromEvent:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  [self withMouseInfo:^(InputManager::MouseInfo &mouse) {
+    std::scoped_lock lock(mouse.m_mutex);
+    mouse.position = pos;
+  }];
+}
+
+- (void)mouseMoved:(NSEvent *)event {
+  [self updateMousePositionFromEvent:event];
+}
+
+- (void)mouseDragged:(NSEvent *)event {
+  [self updateMousePositionFromEvent:event];
+}
+
+- (void)rightMouseDragged:(NSEvent *)event {
+  [self updateMousePositionFromEvent:event];
+}
+
+- (void)mouseDown:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  [self withMouseInfo:^(InputManager::MouseInfo &mouse) {
+    std::scoped_lock lock(mouse.m_mutex);
+    mouse.left_down = true;
+    mouse.left_down_toggle = true;
+    mouse.position = pos;
+  }];
+}
+
+- (void)mouseUp:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  [self withMouseInfo:^(InputManager::MouseInfo &mouse) {
+    std::scoped_lock lock(mouse.m_mutex);
+    mouse.left_down = false;
+    mouse.position = pos;
+  }];
+}
+
+- (void)rightMouseDown:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  [self withMouseInfo:^(InputManager::MouseInfo &mouse) {
+    std::scoped_lock lock(mouse.m_mutex);
+    mouse.right_down = true;
+    mouse.right_down_toggle = true;
+    mouse.position = pos;
+  }];
+}
+
+- (void)rightMouseUp:(NSEvent *)event {
+  NSPoint point = [self convertPoint:event.locationInWindow fromView:nil];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  [self withMouseInfo:^(InputManager::MouseInfo &mouse) {
+    std::scoped_lock lock(mouse.m_mutex);
+    mouse.right_down = false;
+    mouse.position = pos;
+  }];
+}
+
+- (void)scrollWheel:(NSEvent *)event {
+  auto &input = InputManager::instance();
+  input.m_mouse_wheel = (float)(event.scrollingDeltaY / 120.0);
+}
+
+- (void)handlePanGesture:(NSPanGestureRecognizer *)gesture {
+  NSPoint point = [gesture locationInView:self];
+  const glm::ivec2 pos = [self physicalPositionForPoint:point];
+
+  const NSGestureRecognizerState state = gesture.state;
+  const bool down = state == NSGestureRecognizerStateBegan ||
+                    state == NSGestureRecognizerStateChanged;
+
+  [self withTouchInfo:^(InputManager::MouseInfo &touch) {
+    std::scoped_lock lock(touch.m_mutex);
+    touch.position = pos;
+    touch.left_down = down;
+    if (down)
+      touch.left_down_toggle = true;
+  }];
+}
+
+@end
 
 namespace WindowSystemSwiftUIInternal {
+
+NSView *CreateInputCaptureHostView(NSRect frame, bool mainWindow) {
+  return [[CemuInputCaptureView alloc] initWithFrame:frame
+                                          mainWindow:mainWindow ? YES : NO];
+}
 
 void UpdateMainWindowMetricsFromRendererHostView() {
   if (!g_renderer_host_view)
@@ -255,6 +421,7 @@ bool CreatePadWindowIfNeeded(std::string &errorOut) {
   [g_pad_window setTitle:@"GamePad View"];
   [g_pad_window setContentMinSize:NSMakeSize(kPadMinWidth, kPadMinHeight)];
   [g_pad_window setTitlebarAppearsTransparent:NO];
+  [g_pad_window setAcceptsMouseMovedEvents:YES];
   if (!g_pad_window_delegate)
     g_pad_window_delegate = [[CemuPadWindowDelegate alloc] init];
   [g_pad_window setDelegate:g_pad_window_delegate];
@@ -266,7 +433,8 @@ bool CreatePadWindowIfNeeded(std::string &errorOut) {
     return false;
   }
 
-  g_pad_renderer_host_view = [[NSView alloc] initWithFrame:contentView.bounds];
+  g_pad_renderer_host_view =
+      CreateInputCaptureHostView(contentView.bounds, false);
   g_pad_renderer_host_view.autoresizingMask =
       NSViewWidthSizable | NSViewHeightSizable;
   g_pad_renderer_host_view.wantsLayer = YES;

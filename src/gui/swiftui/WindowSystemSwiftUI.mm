@@ -66,6 +66,7 @@ void WindowSystem::Create() {
     [g_main_window center];
     [g_main_window setContentSize:NSMakeSize(960, 490)];
     [g_main_window setContentMinSize:NSMakeSize(960, 490)];
+    [g_main_window setAcceptsMouseMovedEvents:YES];
 
     NSViewController *rootViewController = nil;
     if (void *swiftControllerPtr = CemuCreateSwiftUIRootViewController()) {
@@ -111,7 +112,8 @@ void WindowSystem::Create() {
     g_swiftui_overlay_view.autoresizingMask =
         NSViewWidthSizable | NSViewHeightSizable;
 
-    g_renderer_host_view = [[NSView alloc] initWithFrame:windowContentView.bounds];
+    g_renderer_host_view =
+        CreateInputCaptureHostView(windowContentView.bounds, true);
     g_renderer_host_view.autoresizingMask =
         NSViewWidthSizable | NSViewHeightSizable;
     g_renderer_host_view.wantsLayer = YES;
