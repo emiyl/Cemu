@@ -7,14 +7,28 @@ private struct GameListColumn {
     let alignment: Alignment
 }
 
-private let gameListColumns: [GameListColumn] = [
-    GameListColumn(title: "", width: 48, alignment: .center),
-    GameListColumn(title: "Name", width: 340, alignment: .leading),
-    GameListColumn(title: "Version", width: 80, alignment: .center),
-    GameListColumn(title: "DLC", width: 80, alignment: .center),
-    GameListColumn(title: "Region", width: 80, alignment: .center),
-    GameListColumn(title: "Title ID", width: 200, alignment: .leading),
-]
+private enum GameListColumnIndex {
+    static let icon = 0
+    static let name = 1
+    static let version = 2
+    static let dlc = 3
+    static let region = 4
+    static let titleID = 5
+}
+
+private func makeGameListColumns(totalWidth: CGFloat) -> [GameListColumn] {
+    let iconWidth: CGFloat = 48
+    let contentWidth = max(0, totalWidth - iconWidth)
+
+    return [
+        GameListColumn(title: "", width: iconWidth, alignment: .center),
+        GameListColumn(title: "Name", width: contentWidth * 0.46, alignment: .leading),
+        GameListColumn(title: "Version", width: contentWidth * 0.12, alignment: .center),
+        GameListColumn(title: "DLC", width: contentWidth * 0.10, alignment: .center),
+        GameListColumn(title: "Region", width: contentWidth * 0.10, alignment: .center),
+        GameListColumn(title: "Title ID", width: contentWidth * 0.22, alignment: .leading),
+    ]
+}
 
 @_silgen_name("CemuGameListCreate")
 private func CemuGameListCreate()
@@ -63,16 +77,19 @@ struct GameList: View {
     @State private var games: [GameItem] = []
 
     var body: some View {
-        VStack(spacing: 0) {
-            ScrollView(.horizontal) {
+        GeometryReader { proxy in
+            let columns = makeGameListColumns(totalWidth: proxy.size.width)
+
+            VStack(spacing: 0) {
                 VStack(spacing: 0) {
-                    GameListHeaderView()
+                    GameListHeaderView(columns: columns)
                     Divider()
                     ScrollView {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
                                 GameListRowView(
                                     game: game,
+                                    columns: columns,
                                     isSelected: selectedTitleID == game.titleID,
                                     isAlternateRow: index.isMultiple(of: 2)
                                 )
@@ -86,16 +103,17 @@ struct GameList: View {
                     }
                     .background(Color(nsColor: .controlBackgroundColor))
                 }
-            }
 
-            if showUpdatingBanner {
-                GameListInfoBarView(message: "Updating game list...") {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        showUpdatingBanner = false
+                if showUpdatingBanner {
+                    GameListInfoBarView(message: "Updating game list...") {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            showUpdatingBanner = false
+                        }
                     }
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
@@ -141,16 +159,17 @@ struct GameList: View {
                 region: 0
             )
             if CemuGameListGetRow(i, &row) {
-                if let iconPtr = row.iconData {
-                    defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr)) }
-                }
+                let iconPtr = row.iconData
                 if let namePtr = row.name {
                     defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
+                    if let iconPtr {
+                        defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr)) }
+                    }
 
                     let name = String(cString: namePtr)
                     let region = row.region != 0 ? String(format: "%d", row.region) : ""
                     var image: NSImage?
-                    if let iconData = row.iconData, row.iconSize > 0 {
+                    if let iconData = iconPtr, row.iconSize > 0 {
                         let iconDataBuffer = Data(bytes: iconData, count: Int(row.iconSize))
                         image = NSImage(data: iconDataBuffer)
                     }
@@ -163,6 +182,8 @@ struct GameList: View {
                             dlc: row.dlc,
                             region: region
                         ))
+                } else if let iconPtr {
+                    CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
                 }
             }
         }
@@ -170,10 +191,13 @@ struct GameList: View {
     }
 }
 
-struct GameListHeaderView: View {
+private struct GameListHeaderView: View {
+    let columns: [GameListColumn]
+
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(gameListColumns, id: \.title) { column in
+            ForEach(columns.indices, id: \.self) { index in
+                let column = columns[index]
                 Text(column.title)
                     .font(.system(size: 12, weight: .semibold))
                     .foregroundStyle(.primary)
@@ -186,8 +210,9 @@ struct GameListHeaderView: View {
     }
 }
 
-struct GameListRowView: View {
+private struct GameListRowView: View {
     let game: GameItem
+    let columns: [GameListColumn]
     let isSelected: Bool
     let isAlternateRow: Bool
 
@@ -207,32 +232,44 @@ struct GameListRowView: View {
                         .frame(width: 32, height: 32)
                 }
             }
-            .frame(width: gameListColumns[0].width, alignment: gameListColumns[0].alignment)
+            .frame(
+                width: columns[GameListColumnIndex.icon].width,
+                alignment: columns[GameListColumnIndex.icon].alignment)
             Text(game.name)
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: gameListColumns[1].width, alignment: gameListColumns[1].alignment)
+                .frame(
+                    width: columns[GameListColumnIndex.name].width,
+                    alignment: columns[GameListColumnIndex.name].alignment)
             Text(String(format: "%u", game.version))
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: gameListColumns[2].width, alignment: gameListColumns[2].alignment)
+                .frame(
+                    width: columns[GameListColumnIndex.version].width,
+                    alignment: columns[GameListColumnIndex.version].alignment)
             Text(game.dlc > 0 ? String(format: "%u", game.dlc) : "-")
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: gameListColumns[3].width, alignment: gameListColumns[3].alignment)
+                .frame(
+                    width: columns[GameListColumnIndex.dlc].width,
+                    alignment: columns[GameListColumnIndex.dlc].alignment)
             Text(game.region)
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: gameListColumns[4].width, alignment: gameListColumns[4].alignment)
+                .frame(
+                    width: columns[GameListColumnIndex.region].width,
+                    alignment: columns[GameListColumnIndex.region].alignment)
             Text(String(format: "%016llx", game.titleID))
                 .font(.system(size: 12))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .frame(width: gameListColumns[5].width, alignment: gameListColumns[5].alignment)
+                .frame(
+                    width: columns[GameListColumnIndex.titleID].width,
+                    alignment: columns[GameListColumnIndex.titleID].alignment)
         }
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
