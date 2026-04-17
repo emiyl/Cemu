@@ -136,7 +136,8 @@ if (WIN32)
 endif()
 option(ENABLE_CUBEB "Enabled cubeb backend" ON)
 
-option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" ON)
+option(ENABLE_SWIFTUI_MACOS "Enable experimental native macOS SwiftUI GUI backend" ON)
+option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" OFF)
 
 find_package(Threads REQUIRED)
 find_package(SDL2 REQUIRED)
