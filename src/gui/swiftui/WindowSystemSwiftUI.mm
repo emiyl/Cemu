@@ -355,6 +355,15 @@ CemuApp *app;
 
 @implementation CemuAppDelegate
 
+- (BOOL)windowShouldClose:(NSWindow *)sender {
+  if (sender == g_main_window) {
+    [self quitApp:sender];
+    return NO;
+  }
+
+  return YES;
+}
+
 - (void)windowDidResize:(NSNotification *)notification {
   (void)notification;
   UpdateMainWindowMetricsFromRendererHostView();
