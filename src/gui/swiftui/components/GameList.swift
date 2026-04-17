@@ -90,27 +90,25 @@ struct GameList: View {
                     Divider()
                     ScrollView {
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(games.enumerated()), id: \.element.id) { index, game in
+                            ForEach(games.indices, id: \.self) { index in
+                                let game = games[index]
                                 GameListRowView(
                                     game: game,
                                     columns: columns,
                                     isSelected: selectedTitleID == game.titleID,
                                     isAlternateRow: index.isMultiple(of: 2)
                                 )
-                                .contentShape(Rectangle())
-                                .onTapGesture(count: 2) {
-                                    selectedTitleID = game.titleID
-                                    launchGame(titleID: game.titleID)
-                                }
-                                .onTapGesture {
-                                    selectedTitleID = game.titleID
-                                }
-                                .contextMenu {
-                                    Button("Start") {
-                                        selectedTitleID = game.titleID
-                                        launchGame(titleID: game.titleID)
-                                    }
-                                }
+                                .overlay(
+                                    GameListRowInteractionView(
+                                        onSelect: {
+                                            selectedTitleID = game.titleID
+                                        },
+                                        onLaunch: {
+                                            selectedTitleID = game.titleID
+                                            launchGame(titleID: game.titleID)
+                                        }
+                                    )
+                                )
                                 Divider()
                             }
                         }
@@ -140,11 +138,9 @@ struct GameList: View {
         .onAppear {
             CemuGameListCreate()
             loadGamesFromProvider()
-            installEnterKeyMonitorIfNeeded()
         }
         .onDisappear {
             CemuGameListDestroy()
-            removeEnterKeyMonitor()
         }
     }
 
@@ -172,81 +168,63 @@ struct GameList: View {
         launchGame(titleID: selectedTitleID)
     }
 
-    private func installEnterKeyMonitorIfNeeded() {
-        guard keyEventMonitor == nil else {
-            return
-        }
-
-        keyEventMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { event in
-            if event.keyCode == 36 || event.keyCode == 76 {
-                launchSelectedGame()
-                return nil
-            }
-            return event
-        }
-    }
-
-    private func removeEnterKeyMonitor() {
-        guard let keyEventMonitor else {
-            return
-        }
-
-        NSEvent.removeMonitor(keyEventMonitor)
-        self.keyEventMonitor = nil
-    }
-
     private func loadGamesFromProvider() {
-        var newGames: [GameItem] = []
-        let count = CemuGameListGetCount()
-        for i in 0..<count {
-            var row = CemuGameListRow(
-                titleId: 0,
-                iconData: nil,
-                iconSize: 0,
-                name: nil,
-                region: nil,
-                version: 0,
-                dlc: 0
-            )
-            if CemuGameListGetRow(i, &row) {
-                let iconPtr = row.iconData
-                let regionPtr = row.region
-                if let namePtr = row.name {
-                    defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
+        DispatchQueue.global(qos: .userInitiated).async {
+            var newGames: [GameItem] = []
+            let count = CemuGameListGetCount()
+            for i in 0..<count {
+                var row = CemuGameListRow(
+                    titleId: 0,
+                    iconData: nil,
+                    iconSize: 0,
+                    name: nil,
+                    region: nil,
+                    version: 0,
+                    dlc: 0
+                )
+                if CemuGameListGetRow(i, &row) {
+                    let iconPtr = row.iconData
+                    let regionPtr = row.region
+                    if let namePtr = row.name {
+                        defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
 
-                    let name = String(cString: namePtr)
-                    let region = regionPtr.map { String(cString: $0) } ?? ""
-                    var image: NSImage?
-                    if let iconData = iconPtr, row.iconSize > 0 {
-                        let iconDataBuffer = Data(bytes: iconData, count: Int(row.iconSize))
-                        image = NSImage(data: iconDataBuffer)
-                    }
-                    if let iconPtr {
-                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
-                    }
-                    if let regionPtr {
-                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
-                    }
-                    newGames.append(
-                        GameItem(
-                            titleID: row.titleId,
-                            icon: image,
-                            name: name,
-                            version: row.version,
-                            dlc: row.dlc,
-                            region: region
-                        ))
-                } else {
-                    if let iconPtr {
-                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
-                    }
-                    if let regionPtr {
-                        CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                        let name = String(cString: namePtr)
+                        let region = regionPtr.map { String(cString: $0) } ?? ""
+                        var image: NSImage?
+                        if let iconData = iconPtr, row.iconSize > 0 {
+                            let iconDataBuffer = Data(bytes: iconData, count: Int(row.iconSize))
+                            image = NSImage(data: iconDataBuffer)
+                        }
+                        if let iconPtr {
+                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                        }
+                        if let regionPtr {
+                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                        }
+                        newGames.append(
+                            GameItem(
+                                titleID: row.titleId,
+                                icon: image,
+                                name: name,
+                                version: row.version,
+                                dlc: row.dlc,
+                                region: region
+                            ))
+                    } else {
+                        if let iconPtr {
+                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                        }
+                        if let regionPtr {
+                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                        }
                     }
                 }
             }
+
+            DispatchQueue.main.async {
+                self.games = newGames
+            }
         }
-        games = newGames
     }
 }
 
@@ -342,6 +320,58 @@ private struct GameListRowView: View {
             return Color(nsColor: .controlBackgroundColor)
         }
         return Color(nsColor: .windowBackgroundColor)
+    }
+}
+
+private struct GameListRowInteractionView: NSViewRepresentable {
+    let onSelect: () -> Void
+    let onLaunch: () -> Void
+
+    func makeNSView(context: Context) -> GameListRowInteractionNSView {
+        let view = GameListRowInteractionNSView()
+        view.onSelect = onSelect
+        view.onLaunch = onLaunch
+        return view
+    }
+
+    func updateNSView(_ nsView: GameListRowInteractionNSView, context: Context) {
+        nsView.onSelect = onSelect
+        nsView.onLaunch = onLaunch
+    }
+}
+
+private final class GameListRowInteractionNSView: NSView {
+    var onSelect: (() -> Void)?
+    var onLaunch: (() -> Void)?
+
+    override var acceptsFirstResponder: Bool {
+        true
+    }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        self
+    }
+
+    override func mouseDown(with event: NSEvent) {
+        if event.clickCount >= 2 {
+            onLaunch?()
+        } else {
+            onSelect?()
+        }
+    }
+
+    override func menu(for event: NSEvent) -> NSMenu? {
+        let menu = NSMenu()
+        let startItem = NSMenuItem(
+            title: "Start", action: #selector(startAction(_:)), keyEquivalent: "")
+        startItem.target = self
+        menu.addItem(startItem)
+        return menu
+    }
+
+    @objc private func startAction(_ sender: Any?) {
+        onSelect?()
+        onLaunch?()
     }
 }
 

@@ -3,6 +3,7 @@
 #include "Cafe/Filesystem/fsc.h"
 #include "Cafe/TitleList/GameInfo.h"
 #include "Cafe/TitleList/TitleList.h"
+#include "Common/precompiled.h"
 #include "gui/swiftui/RegionStrings.h"
 #include "config/CemuConfig.h"
 #include "interface/WindowSystem.h"
@@ -25,7 +26,7 @@ struct GameInfo
 	uint16_t dlc;
 	std::string region;
 };
-
+ 
 class GameList
 {
   public:
@@ -113,33 +114,40 @@ class GameList
 
 		for (const auto titleId : titleIds)
 		{
-			GameInfo2 gameInfo = CafeTitleList::GetGameInfo(titleId);
-			if (!gameInfo.IsValid() || gameInfo.IsSystemDataTitle())
-				continue;
-
-			const uint64_t baseTitleId = gameInfo.GetBaseTitleId();
-			GameInfo info{};
-
-			info.titleId = baseTitleId;
-			if (auto cachedIcon = rebuiltIconCache.find(baseTitleId); cachedIcon != rebuiltIconCache.end())
-				info.iconData = cachedIcon->second;
-			else
-			{
-				info.iconData = LoadIconDataForTitle(baseTitleId);
-				rebuiltIconCache.emplace(baseTitleId, info.iconData);
-			}
-			if (!GetConfig().GetGameListCustomName(baseTitleId, info.name) || info.name.empty())
-				info.name = gameInfo.GetTitleName();
-			info.version = gameInfo.GetVersion();
-			info.dlc = gameInfo.GetAOCVersion();
-			info.region = swiftui::CafeConsoleRegionToDisplayKey(static_cast<CafeConsoleRegion>(gameInfo.GetRegion()));
-
-			rebuiltEntries[baseTitleId] = std::move(info);
+			addTitle(titleId, rebuiltEntries, rebuiltIconCache);
 		}
 
 		std::lock_guard lock(m_entriesMutex);
 		m_entries = std::move(rebuiltEntries);
 		m_iconDataCache = std::move(rebuiltIconCache);
+	}
+
+	void addTitle(uint64_t titleId, std::unordered_map<uint64_t, GameInfo>& entries, std::unordered_map<uint64_t, std::vector<uint8_t>>& iconCache)
+	{
+		GameInfo2 gameInfo = CafeTitleList::GetGameInfo(titleId);
+		if (!gameInfo.IsValid() || gameInfo.IsSystemDataTitle())
+			return;
+
+		const uint64_t baseTitleId = gameInfo.GetBaseTitleId();
+		GameInfo info{};
+		info.titleId = baseTitleId;
+		
+		if (auto cachedIcon = iconCache.find(baseTitleId); cachedIcon != iconCache.end())
+			info.iconData = cachedIcon->second;
+		else
+		{
+			info.iconData = LoadIconDataForTitle(baseTitleId);
+			iconCache.emplace(baseTitleId, info.iconData);
+		}
+
+		if (!GetConfig().GetGameListCustomName(baseTitleId, info.name) || info.name.empty())
+			info.name = gameInfo.GetTitleName();
+
+		info.version = gameInfo.GetVersion();
+		info.dlc = gameInfo.GetAOCVersion();
+		info.region = swiftui::CafeConsoleRegionToDisplayKey(static_cast<CafeConsoleRegion>(gameInfo.GetRegion()));
+
+		entries[baseTitleId] = std::move(info);
 	}
 
 	std::vector<uint8_t> LoadIconDataForTitle(uint64_t titleId) const
@@ -217,7 +225,8 @@ extern "C" size_t CemuGameListGetCount(void)
 {
 	if (!g_gameList)
 		return 0;
-	return g_gameList->GetEntries().size();
+	const auto& entries = g_gameList->GetEntries();
+	return entries.size();
 }
 
 extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
@@ -225,7 +234,7 @@ extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow)
 	if (!g_gameList || !outRow)
 		return false;
 
-	const auto entries = g_gameList->GetEntries();
+	const auto& entries = g_gameList->GetEntries();
 	if (index >= entries.size())
 		return false;
 
