@@ -39,6 +39,9 @@ private func CemuGameListDestroy()
 @_silgen_name("CemuGameListRefresh")
 private func CemuGameListRefresh()
 
+@_silgen_name("CemuGameListIsScanning")
+private func CemuGameListIsScanning() -> Bool
+
 @_silgen_name("CemuGameListGetCount")
 private func CemuGameListGetCount() -> UInt64
 
@@ -79,6 +82,7 @@ struct GameList: View {
     @State private var showUpdatingBanner = false
     @State private var games: [GameItem] = []
     @State private var keyEventMonitor: Any?
+    @State private var refreshRequestID = 0
 
     var body: some View {
         GeometryReader { proxy in
@@ -141,19 +145,42 @@ struct GameList: View {
         }
         .onDisappear {
             CemuGameListDestroy()
+            refreshRequestID += 1
         }
     }
 
     private func refreshGameList() {
+        refreshRequestID += 1
+        let currentRefreshRequestID = refreshRequestID
+
         withAnimation(.easeInOut(duration: 0.2)) {
             showUpdatingBanner = true
         }
 
         CemuGameListRefresh()
-        loadGamesFromProvider()
+        waitForRefreshCompletion(requestID: currentRefreshRequestID)
+    }
 
-        withAnimation(.easeInOut(duration: 0.2)) {
-            showUpdatingBanner = false
+    private func waitForRefreshCompletion(requestID: Int) {
+        guard requestID == refreshRequestID else {
+            return
+        }
+
+        if !CemuGameListIsScanning() {
+            loadGamesFromProvider {
+                guard requestID == refreshRequestID else {
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showUpdatingBanner = false
+                }
+            }
+            return
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            waitForRefreshCompletion(requestID: requestID)
         }
     }
 
@@ -168,7 +195,7 @@ struct GameList: View {
         launchGame(titleID: selectedTitleID)
     }
 
-    private func loadGamesFromProvider() {
+    private func loadGamesFromProvider(completion: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .userInitiated).async {
             var newGames: [GameItem] = []
             let count = CemuGameListGetCount()
@@ -223,6 +250,7 @@ struct GameList: View {
 
             DispatchQueue.main.async {
                 self.games = newGames
+                completion?()
             }
         }
     }

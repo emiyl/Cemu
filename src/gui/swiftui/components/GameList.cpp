@@ -46,12 +46,6 @@ class GameList
 
 	void Refresh()
 	{
-		{
-			std::lock_guard lock(m_entriesMutex);
-			m_entries.clear();
-			m_iconDataCache.clear();
-		}
-
 		CafeTitleList::Refresh();
 
 		if (m_titleListCallbackId != 0)
@@ -218,7 +212,6 @@ extern "C" void CemuGameListRefresh(void)
 {
 	if (g_gameList)
 		g_gameList->Refresh();
-	WindowSystem::RefreshGameList();
 }
 
 extern "C" size_t CemuGameListGetCount(void)

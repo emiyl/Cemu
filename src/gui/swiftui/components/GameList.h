@@ -21,6 +21,7 @@ typedef void (*GameListCallback)(uint64_t titleId);
 extern "C" void CemuGameListCreate(void);
 extern "C" void CemuGameListDestroy(void);
 extern "C" void CemuGameListRefresh(void);
+extern "C" bool CemuGameListIsScanning(void);
 extern "C" size_t CemuGameListGetCount(void);
 extern "C" bool CemuGameListGetRow(size_t index, CemuGameListRow* outRow);
 extern "C" void CemuGameListFreeBuffer(void* ptr);
