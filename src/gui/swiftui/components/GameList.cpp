@@ -3,6 +3,7 @@
 #include "Cafe/Filesystem/fsc.h"
 #include "Cafe/TitleList/GameInfo.h"
 #include "Cafe/TitleList/TitleList.h"
+#include "gui/swiftui/RegionStrings.h"
 #include "config/CemuConfig.h"
 #include "interface/WindowSystem.h"
 #include "util/helpers/helpers.h"
@@ -24,39 +25,6 @@ struct GameInfo
 	uint16_t dlc;
 	std::string region;
 };
-
-static const char* RegionEnumKey(CafeConsoleRegion region)
-{
-	switch (region)
-	{
-	case CafeConsoleRegion::JPN:
-		return "JPN";
-	case CafeConsoleRegion::USA:
-		return "USA";
-	case CafeConsoleRegion::EUR:
-		return "EUR";
-	case CafeConsoleRegion::AUS_DEPR:
-		return "AUS_DEPR";
-	case CafeConsoleRegion::CHN:
-		return "CHN";
-	case CafeConsoleRegion::KOR:
-		return "KOR";
-	case CafeConsoleRegion::TWN:
-		return "TWN";
-	case CafeConsoleRegion::Auto:
-		return "Auto";
-	default:
-		return "";
-	}
-}
-
-static std::string RegionToSwiftUIString(CafeConsoleRegion region)
-{
-	std::string key = RegionEnumKey(region);
-	if (const auto underscorePos = key.find('_'); underscorePos != std::string::npos)
-		key.resize(underscorePos);
-	return key;
-}
 
 class GameList
 {
@@ -164,7 +132,7 @@ class GameList
 				info.name = gameInfo.GetTitleName();
 			info.version = gameInfo.GetVersion();
 			info.dlc = gameInfo.GetAOCVersion();
-			info.region = RegionToSwiftUIString(static_cast<CafeConsoleRegion>(gameInfo.GetRegion()));
+			info.region = swiftui::CafeConsoleRegionToDisplayKey(static_cast<CafeConsoleRegion>(gameInfo.GetRegion()));
 
 			rebuiltEntries[baseTitleId] = std::move(info);
 		}

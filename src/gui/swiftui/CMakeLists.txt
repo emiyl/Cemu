@@ -5,6 +5,8 @@ add_library(CemuSwiftUiGui STATIC
   CemuApp.h
   MainWindow.cpp
   MainWindow.h
+  RegionStrings.cpp
+  RegionStrings.h
   WindowSystemSwiftUI.mm
   ContentView.swift
   components/GameList.swift
