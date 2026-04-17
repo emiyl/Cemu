@@ -10,6 +10,10 @@ add_library(CemuSwiftUiGui STATIC
   canvas/VulkanCanvas.mm
   RegionStrings.cpp
   RegionStrings.h
+  WindowSystemSwiftUI/WindowSystemSwiftUIInternal.h
+  WindowSystemSwiftUI/WindowSystemSwiftUIState.mm
+  WindowSystemSwiftUI/WindowSystemSwiftUIHelpers.mm
+  WindowSystemSwiftUI/WindowSystemSwiftUIDelegates.mm
   WindowSystemSwiftUI.mm
   ContentView.swift
   components/GameList.swift
