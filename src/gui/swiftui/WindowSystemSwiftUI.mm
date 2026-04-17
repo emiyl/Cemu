@@ -74,6 +74,27 @@ void SetMainWindowTitle(NSString *title) {
   });
 }
 
+void SetMainWindowUnifiedTitleToolbar(bool enabled) {
+  if (!g_main_window)
+    return;
+
+  NSWindowStyleMask styleMask = g_main_window.styleMask;
+  if (enabled)
+    styleMask |= NSWindowStyleMaskUnifiedTitleAndToolbar;
+  else
+    styleMask &= ~NSWindowStyleMaskUnifiedTitleAndToolbar;
+
+  if (styleMask != g_main_window.styleMask)
+    [g_main_window setStyleMask:styleMask];
+
+  if (@available(macOS 11.0, *)) {
+    g_main_window.toolbarStyle =
+        enabled ? NSWindowToolbarStyleUnified : NSWindowToolbarStyleAutomatic;
+  }
+
+  [g_main_window setTitlebarAppearsTransparent:NO];
+}
+
 void UpdateTitleFromGame() {
   const std::string titleName = CafeSystem::GetForegroundTitleName();
   if (!titleName.empty() && g_main_window) {
@@ -275,6 +296,7 @@ std::unique_ptr<RenderCanvas> g_renderer_canvas;
 NSView *g_swiftui_overlay_view = nil;
 NSViewController *g_root_view_controller = nil;
 NSViewController *g_game_view_controller = nil;
+NSToolbar *g_swiftui_toolbar = nil;
 } // namespace
 
 extern "C" bool CemuSwiftUILaunchTitleById(uint64_t titleId) {
@@ -393,6 +415,10 @@ void WindowSystem::Create() {
                        positioned:NSWindowBelow
                        relativeTo:g_swiftui_overlay_view];
 
+    [g_main_window makeKeyAndOrderFront:nil];
+    [app activateIgnoringOtherApps:YES];
+
+    [windowContentView layoutSubtreeIfNeeded];
     UpdateMainWindowMetricsFromRendererHostView();
 
     std::string rendererError;
@@ -404,9 +430,6 @@ void WindowSystem::Create() {
       [NSApp terminate:nil];
       return;
     }
-
-    [g_main_window makeKeyAndOrderFront:nil];
-    [app activateIgnoringOtherApps:YES];
 
     g_window_info.app_active = true;
     g_window_info.pad_open = false;
@@ -499,6 +522,13 @@ void WindowSystem::NotifyGameLoaded() {
     if (!g_main_window || !g_renderer_host_view)
       return;
 
+    if (!g_swiftui_toolbar)
+      g_swiftui_toolbar = g_main_window.toolbar;
+    [g_main_window setToolbar:nil];
+
+    // Use standard window chrome while the renderer owns the content.
+    SetMainWindowUnifiedTitleToolbar(false);
+
     if (!g_game_view_controller) {
       NSViewController *controller = [[NSViewController alloc] init];
       NSView *gameView =
@@ -531,6 +561,12 @@ void WindowSystem::NotifyGameExited() {
   dispatch_async(dispatch_get_main_queue(), ^{
     if (!g_main_window || !g_root_view_controller || !g_renderer_host_view)
       return;
+
+    if (g_swiftui_toolbar && g_main_window.toolbar != g_swiftui_toolbar)
+      [g_main_window setToolbar:g_swiftui_toolbar];
+
+    // Restore unified title/toolbar when returning to the game list UI.
+    SetMainWindowUnifiedTitleToolbar(true);
 
     [g_renderer_host_view removeFromSuperview];
     [g_main_window setContentViewController:g_root_view_controller];
