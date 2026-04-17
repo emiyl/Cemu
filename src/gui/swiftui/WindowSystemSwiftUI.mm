@@ -351,6 +351,8 @@ void WindowSystem::Create() {
     [g_main_window setTitle:@"Cemu"];
     [g_main_window setTitlebarAppearsTransparent:NO];
     [g_main_window setDelegate:g_app_delegate];
+    [g_main_window setContentSize:NSMakeSize(960, 540)];
+    [g_main_window setContentMinSize:NSMakeSize(960, 540)];
 
     NSView *windowContentView = [g_main_window contentView];
     if (!windowContentView) {
