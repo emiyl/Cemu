@@ -614,17 +614,12 @@ VulkanRenderer::VulkanRenderer()
 	std::set<int> uniqueQueueFamilies = { m_indices.graphicsFamily, m_indices.presentFamily };
 	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = CreateQueueCreateInfos(uniqueQueueFamilies);
 	VkPhysicalDeviceFeatures deviceFeatures = {};
-	VkPhysicalDeviceFeatures2 deviceFeatures2 = {};
-	deviceFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-	vkGetPhysicalDeviceFeatures2(m_physicalDevice, &deviceFeatures2);
 
 	deviceFeatures.independentBlend = VK_TRUE;
 	deviceFeatures.samplerAnisotropy = VK_TRUE;
 	deviceFeatures.imageCubeArray = VK_TRUE;
-	// On macOS/MoltenVK this can depend on runtime/driver; only request if advertised.
-	deviceFeatures.logicOp = deviceFeatures2.features.logicOp;
-	if (!deviceFeatures.logicOp)
-		cemuLog_log(LogType::Force, "Vulkan: logicOp unsupported by current device/driver, disabling it for device creation");
+	//moltenVK supports logicOp via private api
+	deviceFeatures.logicOp = VK_TRUE;
 #if !BOOST_OS_MACOS
 	deviceFeatures.geometryShader = VK_TRUE;
 #endif
