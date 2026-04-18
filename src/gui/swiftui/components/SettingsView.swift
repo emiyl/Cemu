@@ -406,36 +406,48 @@ final class SettingsStore: ObservableObject {
 struct SettingsView: View {
     @StateObject var store = SettingsStore()
 
+    private var selectedTabBinding: Binding<SettingsTab?> {
+        Binding<SettingsTab?>(
+            get: { store.selectedTab },
+            set: { newValue in
+                guard let newValue else {
+                    return
+                }
+                store.selectedTab = newValue
+            }
+        )
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            TabView(selection: $store.selectedTab) {
-                generalTab
-                    .tabItem { Label("General", systemImage: "slider.horizontal.3") }
-                    .tag(SettingsTab.general)
-
-                graphicsTab
-                    .tabItem { Label("Graphics", systemImage: "display") }
-                    .tag(SettingsTab.graphics)
-
-                audioTab
-                    .tabItem { Label("Audio", systemImage: "speaker.wave.2") }
-                    .tag(SettingsTab.audio)
-
-                overlayTab
-                    .tabItem {
-                        Label("Overlay", systemImage: "gauge.open.with.lines.needle.33percent")
+            NavigationSplitView {
+                List(SettingsTab.allCases, selection: selectedTabBinding) { tab in
+                    Label(tab.title, systemImage: tab.symbolName)
+                        .tag(tab)
+                }
+                .listStyle(.sidebar)
+                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+            } detail: {
+                Group {
+                    switch store.selectedTab {
+                    case .general:
+                        generalTab
+                    case .graphics:
+                        graphicsTab
+                    case .audio:
+                        audioTab
+                    case .overlay:
+                        overlayTab
+                    case .account:
+                        accountTab
+                    case .debug:
+                        debugTab
                     }
-                    .tag(SettingsTab.overlay)
-
-                accountTab
-                    .tabItem { Label("Account", systemImage: "person.crop.circle") }
-                    .tag(SettingsTab.account)
-
-                debugTab
-                    .tabItem { Label("Debug", systemImage: "ladybug") }
-                    .tag(SettingsTab.debug)
+                }
+                .padding(16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
-            .padding(16)
+            .navigationSplitViewStyle(.balanced)
 
             Divider()
 
@@ -512,6 +524,25 @@ struct SettingsView: View {
     }
 }
 
+extension SettingsTab: Identifiable {
+    var id: String { rawValue }
+
+    var title: String {
+        rawValue
+    }
+
+    var symbolName: String {
+        switch self {
+        case .general: return "slider.horizontal.3"
+        case .graphics: return "display"
+        case .audio: return "speaker.wave.2"
+        case .overlay: return "rectangle.on.rectangle"
+        case .account: return "person.crop.circle"
+        case .debug: return "ladybug"
+        }
+    }
+}
+
 private var settingsWindowController: NSWindowController?
 
 @_cdecl("CemuShowSettingsWindow")
@@ -528,11 +559,14 @@ public func CemuShowSettingsWindow() {
 
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
-            styleMask: [.titled, .closable, .miniaturizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
         window.title = "Preferences"
+        window.titleVisibility = .hidden
+        window.titlebarAppearsTransparent = true
+        window.toolbarStyle = .unified
         window.contentViewController = contentController
         window.center()
         window.isReleasedWhenClosed = false
