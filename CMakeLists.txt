@@ -95,7 +95,7 @@ endif()
 
 if (APPLE)
     enable_language(OBJC OBJCXX)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.4")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
 endif()
 
 if (UNIX AND NOT APPLE)

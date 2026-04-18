@@ -270,6 +270,7 @@ jobs:
         -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} \
         -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
         -DMACOS_BUNDLE=ON \
+        -DENABLE_SWIFTUI_MACOS=ON \
         -G Ninja
 
     - name: "Build Cemu"
