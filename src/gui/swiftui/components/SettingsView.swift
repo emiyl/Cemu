@@ -1,0 +1,545 @@
+import AppKit
+import SwiftUI
+
+@_silgen_name("CemuSettingsLoad")
+private func CemuSettingsLoad(_ outState: UnsafeMutablePointer<CemuSettingsState>) -> Bool
+
+@_silgen_name("CemuSettingsSave")
+private func CemuSettingsSave(_ inState: UnsafePointer<CemuSettingsState>) -> Bool
+
+@_silgen_name("CemuSettingsFreeBuffer")
+private func CemuSettingsFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
+
+@_silgen_name("CemuSettingsGetMlcPath")
+private func CemuSettingsGetMlcPath() -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsGetDefaultMlcPath")
+private func CemuSettingsGetDefaultMlcPath() -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsSetMlcPath")
+private func CemuSettingsSetMlcPath(_ path: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("CemuSettingsGetGpuCaptureDir")
+private func CemuSettingsGetGpuCaptureDir() -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsGetDefaultGpuCaptureDir")
+private func CemuSettingsGetDefaultGpuCaptureDir() -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsSetGpuCaptureDir")
+private func CemuSettingsSetGpuCaptureDir(_ path: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("CemuSettingsGetGamePathCount")
+private func CemuSettingsGetGamePathCount() -> UInt64
+
+@_silgen_name("CemuSettingsGetGamePath")
+private func CemuSettingsGetGamePath(_ index: UInt64) -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsAddGamePath")
+private func CemuSettingsAddGamePath(_ path: UnsafePointer<CChar>?) -> Bool
+
+@_silgen_name("CemuSettingsRemoveGamePath")
+private func CemuSettingsRemoveGamePath(_ index: UInt64) -> Bool
+
+@_silgen_name("CemuSettingsGetAccountCount")
+private func CemuSettingsGetAccountCount() -> UInt64
+
+@_silgen_name("CemuSettingsGetAccountPersistentId")
+private func CemuSettingsGetAccountPersistentId(_ index: UInt64) -> UInt32
+
+@_silgen_name("CemuSettingsGetAccountDisplayName")
+private func CemuSettingsGetAccountDisplayName(_ index: UInt64) -> UnsafePointer<CChar>?
+
+@_silgen_name("CemuSettingsCreateAccount")
+private func CemuSettingsCreateAccount(
+    _ miiName: UnsafePointer<CChar>?, _ outPersistentId: UnsafeMutablePointer<UInt32>?
+) -> Bool
+
+@_silgen_name("CemuSettingsDeleteAccount")
+private func CemuSettingsDeleteAccount(_ persistentId: UInt32) -> Bool
+
+struct CemuSettingsState {
+    var language: Int32 = 0
+    var useDiscordPresence: Int32 = 0
+    var saveScreenshots: Int32 = 0
+    var checkForUpdates: Int32 = 0
+    var receiveUntestedUpdates: Int32 = 0
+    var playBootSound: Int32 = 0
+    var isTitleRunning: Int32 = 0
+    var supportsCustomNetworkService: Int32 = 0
+
+    var graphicApi: Int32 = 0
+    var vsync: Int32 = 0
+    var asyncCompile: Int32 = 0
+    var gx2DrawDoneSync: Int32 = 0
+    var forceMeshShaders: Int32 = 0
+    var supportsVulkan: Int32 = 0
+    var supportsMetal: Int32 = 0
+    var overrideGamma: Int32 = 0
+    var overrideGammaValue: Float = 2.2
+    var displayGammaValue: Float = 2.2
+    var displayGammaIsSRGB: Int32 = 0
+    var upscaleFilter: Int32 = 0
+    var downscaleFilter: Int32 = 0
+    var fullscreenScaling: Int32 = 0
+
+    var audioApi: Int32 = 0
+    var audioDelay: Int32 = 0
+    var tvChannels: Int32 = 1
+    var padChannels: Int32 = 1
+    var inputChannels: Int32 = 0
+    var tvVolume: Int32 = 100
+    var padVolume: Int32 = 100
+    var inputVolume: Int32 = 100
+    var portalVolume: Int32 = 100
+
+    var overlayPosition: Int32 = 0
+    var overlayTextScale: Int32 = 100
+    var overlayTextColor: UInt32 = 0xFFFF_FFFF
+    var overlayFps: Int32 = 1
+    var overlayDrawcalls: Int32 = 0
+    var overlayCpuUsage: Int32 = 0
+    var overlayCpuPerCoreUsage: Int32 = 0
+    var overlayRamUsage: Int32 = 0
+    var overlayVramUsage: Int32 = 0
+    var overlayDebug: Int32 = 0
+
+    var notificationPosition: Int32 = 1
+    var notificationTextScale: Int32 = 100
+    var notificationTextColor: UInt32 = 0xFFFF_FFFF
+    var notificationControllerProfiles: Int32 = 1
+    var notificationControllerBattery: Int32 = 0
+    var notificationShaderCompiling: Int32 = 1
+    var notificationFriends: Int32 = 1
+
+    var activeAccountPersistentId: UInt32 = 0
+    var activeAccountNetworkService: Int32 = 0
+
+    var crashDump: Int32 = 0
+    var gdbPort: Int32 = 1337
+    var framebufferFetch: Int32 = 0
+}
+
+struct AccountEntry: Identifiable {
+    let persistentId: UInt32
+    let displayName: String
+    var id: UInt32 { persistentId }
+}
+
+enum SettingsTab: String, CaseIterable {
+    case general = "General"
+    case graphics = "Graphics"
+    case audio = "Audio"
+    case overlay = "Overlay"
+    case account = "Account"
+    case debug = "Debug"
+}
+
+enum GraphicsAPI: Int32, CaseIterable, Identifiable {
+    case openGL = 0
+    case vulkan = 1
+    case metal = 2
+
+    var id: Int32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .openGL: return "OpenGL"
+        case .vulkan: return "Vulkan"
+        case .metal: return "Metal"
+        }
+    }
+}
+
+struct LanguageOption: Identifiable {
+    let id: Int32
+    let title: String
+}
+
+enum AudioAPI: Int32, CaseIterable, Identifiable {
+    case directSound = 0
+    case xAudio27 = 1
+    case xAudio2 = 2
+    case cubeb = 3
+
+    var id: Int32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .directSound: return "DirectSound"
+        case .xAudio27: return "XAudio2.7"
+        case .xAudio2: return "XAudio2"
+        case .cubeb: return "Cubeb"
+        }
+    }
+}
+
+enum SettingsPosition: Int32, CaseIterable, Identifiable {
+    case disabled = 0
+    case topLeft = 1
+    case topCenter = 2
+    case topRight = 3
+    case bottomLeft = 4
+    case bottomCenter = 5
+    case bottomRight = 6
+
+    var id: Int32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .disabled: return "Disabled"
+        case .topLeft: return "Top left"
+        case .topCenter: return "Top center"
+        case .topRight: return "Top right"
+        case .bottomLeft: return "Bottom left"
+        case .bottomCenter: return "Bottom center"
+        case .bottomRight: return "Bottom right"
+        }
+    }
+}
+
+enum NetworkServiceOption: Int32, CaseIterable, Identifiable {
+    case offline = 0
+    case nintendo = 1
+    case pretendo = 2
+    case custom = 3
+
+    var id: Int32 { rawValue }
+
+    var title: String {
+        switch self {
+        case .offline: return "Offline"
+        case .nintendo: return "Nintendo"
+        case .pretendo: return "Pretendo"
+        case .custom: return "Custom"
+        }
+    }
+}
+
+enum ScalePreset: Int32, CaseIterable, Identifiable {
+    case x50 = 50
+    case x75 = 75
+    case x100 = 100
+    case x125 = 125
+    case x150 = 150
+    case x175 = 175
+    case x200 = 200
+    case x225 = 225
+    case x250 = 250
+    case x275 = 275
+    case x300 = 300
+
+    var id: Int32 { rawValue }
+    var title: String { "\(rawValue)%" }
+}
+
+final class SettingsStore: ObservableObject {
+    @Published var state = CemuSettingsState()
+    @Published var selectedTab: SettingsTab = .general
+    @Published var gamePaths: [String] = []
+    @Published var accounts: [AccountEntry] = []
+    @Published var newAccountName = ""
+    @Published var mlcPath = ""
+    @Published var defaultMlcPath = ""
+    @Published var gpuCaptureDir = ""
+    @Published var defaultGpuCaptureDir = ""
+    @Published var selectedGamePath: String?
+
+    let availableLanguages: [LanguageOption] = [
+        LanguageOption(id: 0, title: "Default"),
+        LanguageOption(id: 1, title: "Japanese"),
+        LanguageOption(id: 2, title: "English"),
+        LanguageOption(id: 3, title: "French"),
+        LanguageOption(id: 4, title: "German"),
+        LanguageOption(id: 5, title: "Italian"),
+        LanguageOption(id: 6, title: "Spanish"),
+        LanguageOption(id: 7, title: "Chinese"),
+        LanguageOption(id: 8, title: "Korean"),
+        LanguageOption(id: 9, title: "Dutch"),
+        LanguageOption(id: 10, title: "Portuguese"),
+        LanguageOption(id: 11, title: "Russian"),
+        LanguageOption(id: 12, title: "Taiwanese"),
+    ]
+
+    func load() {
+        var loaded = CemuSettingsState()
+        if CemuSettingsLoad(&loaded) {
+            state = loaded
+        }
+        if !availableLanguages.contains(where: { $0.id == state.language }) {
+            state.language = 0
+        }
+        mlcPath = Self.consumeCString(CemuSettingsGetMlcPath())
+        defaultMlcPath = Self.consumeCString(CemuSettingsGetDefaultMlcPath())
+        gpuCaptureDir = Self.consumeCString(CemuSettingsGetGpuCaptureDir())
+        defaultGpuCaptureDir = Self.consumeCString(CemuSettingsGetDefaultGpuCaptureDir())
+        reloadGamePaths()
+        reloadAccounts()
+        if state.activeAccountPersistentId == 0, let first = accounts.first {
+            state.activeAccountPersistentId = first.persistentId
+        }
+    }
+
+    func save() {
+        var snapshot = state
+        _ = CemuSettingsSave(&snapshot)
+        mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
+        gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
+        load()
+    }
+
+    func closeWindow() {
+        NSApp.keyWindow?.close()
+    }
+
+    func reloadGamePaths() {
+        var paths: [String] = []
+        let count = CemuSettingsGetGamePathCount()
+        for i in 0..<count {
+            paths.append(Self.consumeCString(CemuSettingsGetGamePath(i)))
+        }
+        gamePaths = paths
+        if !paths.contains(selectedGamePath ?? "") {
+            selectedGamePath = nil
+        }
+    }
+
+    func addGamePath() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.canCreateDirectories = true
+        if panel.runModal() != .OK {
+            return
+        }
+        guard let url = panel.url else {
+            return
+        }
+        let path = url.path
+        path.withCString { _ = CemuSettingsAddGamePath($0) }
+        reloadGamePaths()
+    }
+
+    func removeGamePath(at offsets: IndexSet) {
+        for idx in offsets.sorted(by: >) {
+            _ = CemuSettingsRemoveGamePath(UInt64(idx))
+        }
+        reloadGamePaths()
+    }
+
+    func removeSelectedGamePath() {
+        guard let selectedGamePath,
+            let idx = gamePaths.firstIndex(of: selectedGamePath)
+        else {
+            return
+        }
+        _ = CemuSettingsRemoveGamePath(UInt64(idx))
+        reloadGamePaths()
+    }
+
+    func reloadAccounts() {
+        var values: [AccountEntry] = []
+        let count = CemuSettingsGetAccountCount()
+        for i in 0..<count {
+            let id = CemuSettingsGetAccountPersistentId(i)
+            let name = Self.consumeCString(CemuSettingsGetAccountDisplayName(i))
+            values.append(AccountEntry(persistentId: id, displayName: name))
+        }
+        accounts = values
+    }
+
+    func createAccount() {
+        let trimmed = newAccountName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        var createdId: UInt32 = 0
+        trimmed.withCString {
+            _ = CemuSettingsCreateAccount($0, &createdId)
+        }
+        newAccountName = ""
+        reloadAccounts()
+        if createdId != 0 {
+            state.activeAccountPersistentId = createdId
+        }
+    }
+
+    func deleteSelectedAccount() {
+        guard state.activeAccountPersistentId != 0 else {
+            return
+        }
+        _ = CemuSettingsDeleteAccount(state.activeAccountPersistentId)
+        reloadAccounts()
+        if !accounts.contains(where: { $0.persistentId == state.activeAccountPersistentId }) {
+            state.activeAccountPersistentId = accounts.first?.persistentId ?? 0
+        }
+    }
+
+    var availableGraphicsAPIs: [GraphicsAPI] {
+        var values: [GraphicsAPI] = []
+        if state.supportsVulkan != 0 {
+            values.append(.vulkan)
+        }
+        if state.supportsMetal != 0 {
+            values.append(.metal)
+        }
+        if values.isEmpty {
+            values = [.vulkan]
+        }
+        return values
+    }
+
+    var showCustomNetwork: Bool {
+        state.supportsCustomNetworkService != 0
+    }
+
+    static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
+        guard let ptr else {
+            return ""
+        }
+        let string = String(cString: ptr)
+        CemuSettingsFreeBuffer(UnsafeMutableRawPointer(mutating: ptr))
+        return string
+    }
+}
+
+struct SettingsView: View {
+    @StateObject var store = SettingsStore()
+
+    var body: some View {
+        VStack(spacing: 0) {
+            TabView(selection: $store.selectedTab) {
+                generalTab
+                    .tabItem { Label("General", systemImage: "slider.horizontal.3") }
+                    .tag(SettingsTab.general)
+
+                graphicsTab
+                    .tabItem { Label("Graphics", systemImage: "display") }
+                    .tag(SettingsTab.graphics)
+
+                audioTab
+                    .tabItem { Label("Audio", systemImage: "speaker.wave.2") }
+                    .tag(SettingsTab.audio)
+
+                overlayTab
+                    .tabItem {
+                        Label("Overlay", systemImage: "gauge.open.with.lines.needle.33percent")
+                    }
+                    .tag(SettingsTab.overlay)
+
+                accountTab
+                    .tabItem { Label("Account", systemImage: "person.crop.circle") }
+                    .tag(SettingsTab.account)
+
+                debugTab
+                    .tabItem { Label("Debug", systemImage: "ladybug") }
+                    .tag(SettingsTab.debug)
+            }
+            .padding(16)
+
+            Divider()
+
+            HStack {
+                Spacer()
+                Button("Cancel") {
+                    store.load()
+                    store.closeWindow()
+                }
+                Button("Apply") {
+                    store.save()
+                    store.closeWindow()
+                }
+                .keyboardShortcut(.return, modifiers: [.command])
+            }
+            .padding(12)
+        }
+        .frame(minWidth: 860, minHeight: 620)
+        .onAppear {
+            store.load()
+        }
+    }
+
+    func sliderRow(_ title: String, value: Binding<Int32>, step: Double) -> some View {
+        HStack {
+            Text(title)
+                .frame(width: 80, alignment: .leading)
+            Slider(
+                value: Binding(
+                    get: { Double(value.wrappedValue) },
+                    set: { value.wrappedValue = Int32($0.rounded()) }
+                ), in: 0...100, step: step)
+            Text("\(value.wrappedValue)%")
+                .frame(width: 44, alignment: .trailing)
+        }
+    }
+
+    func colorRow(_ title: String, value: Binding<UInt32>) -> some View {
+        let colorBinding = Binding<Color>(
+            get: {
+                let rgba = value.wrappedValue
+                let r = Double((rgba >> 24) & 0xFF) / 255.0
+                let g = Double((rgba >> 16) & 0xFF) / 255.0
+                let b = Double((rgba >> 8) & 0xFF) / 255.0
+                let a = Double(rgba & 0xFF) / 255.0
+                return Color(.sRGB, red: r, green: g, blue: b, opacity: a)
+            },
+            set: { color in
+                let nsColor = NSColor(color)
+                guard let converted = nsColor.usingColorSpace(.sRGB) else {
+                    return
+                }
+                let r = UInt32((converted.redComponent * 255).rounded())
+                let g = UInt32((converted.greenComponent * 255).rounded())
+                let b = UInt32((converted.blueComponent * 255).rounded())
+                let a = UInt32((converted.alphaComponent * 255).rounded())
+                value.wrappedValue = (r << 24) | (g << 16) | (b << 8) | a
+            }
+        )
+
+        return HStack {
+            Text(title)
+            Spacer()
+            ColorPicker(title, selection: colorBinding, supportsOpacity: true)
+                .labelsHidden()
+        }
+    }
+
+    func boolBinding(_ keyPath: WritableKeyPath<CemuSettingsState, Int32>) -> Binding<Bool> {
+        Binding<Bool>(
+            get: { store.state[keyPath: keyPath] != 0 },
+            set: { store.state[keyPath: keyPath] = $0 ? 1 : 0 }
+        )
+    }
+}
+
+private var settingsWindowController: NSWindowController?
+
+@_cdecl("CemuShowSettingsWindow")
+public func CemuShowSettingsWindow() {
+    DispatchQueue.main.async {
+        if let window = settingsWindowController?.window {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            return
+        }
+
+        let view = SettingsView()
+        let contentController = NSHostingController(rootView: view)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
+            styleMask: [.titled, .closable, .miniaturizable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = "Preferences"
+        window.contentViewController = contentController
+        window.center()
+        window.isReleasedWhenClosed = false
+
+        let controller = NSWindowController(window: window)
+        settingsWindowController = controller
+        controller.showWindow(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+}

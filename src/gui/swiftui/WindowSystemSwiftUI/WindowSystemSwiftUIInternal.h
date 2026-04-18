@@ -28,6 +28,7 @@ class CemuApp;
 class RenderCanvas;
 
 extern "C" void *CemuCreateSwiftUIRootViewController(void);
+extern "C" void CemuShowSettingsWindow(void);
 
 #ifdef __OBJC__
 @interface CemuAppDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate>

@@ -19,6 +19,15 @@ add_library(CemuSwiftUiGui STATIC
   components/GameList.swift
   components/GameList.cpp
   components/GameList.h
+  components/SettingsView.swift
+  components/settingsTabs/GeneralSettingsTab.swift
+  components/settingsTabs/GraphicsSettingsTab.swift
+  components/settingsTabs/AudioSettingsTab.swift
+  components/settingsTabs/OverlaySettingsTab.swift
+  components/settingsTabs/AccountSettingsTab.swift
+  components/settingsTabs/DebugSettingsTab.swift
+  components/SettingsView.cpp
+  components/SettingsView.h
 )
 
 set_target_properties(CemuSwiftUiGui PROPERTIES

@@ -24,6 +24,7 @@ void SwiftUICemuConfig::Load(XMLConfigParser& parser)
 {
 	language = parser.get<sint32>("language", 0);
 	use_discord_presence = parser.get("use_discord_presence", true);
+	save_screenshots = parser.get("save_screenshot", true);
 	feral_gamemode = parser.get("feral_gamemode", false);
 	check_update = parser.get("check_update", true);
 	receive_untested_updates = parser.get("receive_untested_updates", false);
@@ -64,6 +65,7 @@ void SwiftUICemuConfig::Save(XMLConfigParser& config)
 {
 	config.set<sint32>("language", language);
 	config.set<bool>("use_discord_presence", use_discord_presence);
+	config.set<bool>("save_screenshot", save_screenshots);
 	config.set<bool>("feral_gamemode", feral_gamemode);
 	config.set<bool>("check_update", check_update);
 	config.set<bool>("receive_untested_updates", receive_untested_updates);

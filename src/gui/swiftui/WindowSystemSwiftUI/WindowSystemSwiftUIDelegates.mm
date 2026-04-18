@@ -142,15 +142,8 @@ using namespace WindowSystemSwiftUIInternal;
 }
 
 - (void)openPreferences:(id)sender {
-  fs::path configPath = ActiveSettings::GetConfigPath();
-  std::string configPathUtf8 = _pathToUtf8(configPath);
-  NSString *configNSString =
-      [NSString stringWithUTF8String:configPathUtf8.c_str()];
-  if (configNSString.length == 0)
-    return;
-
-  NSURL *configURL = [NSURL fileURLWithPath:configNSString isDirectory:YES];
-  [[NSWorkspace sharedWorkspace] openURL:configURL];
+  (void)sender;
+  CemuShowSettingsWindow();
 }
 
 - (void)toggleFullscreen:(id)sender {
