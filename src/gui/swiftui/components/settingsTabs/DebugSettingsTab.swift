@@ -25,7 +25,7 @@ extension SettingsView {
                     Text("GPU Capture Directory")
                     Text(
                         store.gpuCaptureDir.isEmpty
-                            ? store.defaultGpuCaptureDir : store.gpuCaptureDir
+                        ? store.defaultGpuCaptureDir : store.gpuCaptureDir
                     )
                     .lineLimit(1)
                     .truncationMode(.middle)

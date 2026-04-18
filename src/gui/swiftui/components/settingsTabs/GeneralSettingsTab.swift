@@ -19,7 +19,7 @@ extension SettingsView {
                     "Receive untested updates",
                     isOn: boolBinding(\CemuSettingsState.receiveUntestedUpdates))
             }
-
+            
             Section {
                 HStack {
                     let displayPath = store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
@@ -56,12 +56,12 @@ extension SettingsView {
                 if false {
                     Button("Open Folder") {
                         let displayPath =
-                            store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
+                        store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
                         NSWorkspace.shared.open(URL(fileURLWithPath: displayPath))
                     }
                 }
             }
-
+            
             Section("Game Paths") {
                 List(selection: $store.selectedGamePath) {
                     ForEach(store.gamePaths, id: \.self) { path in
@@ -70,7 +70,7 @@ extension SettingsView {
                     }
                 }
                 .frame(height: CGFloat(max(store.gamePaths.count, 1)) * 26.0)
-
+                
                 HStack {
                     Button("Add Path") {
                         store.addGamePath()

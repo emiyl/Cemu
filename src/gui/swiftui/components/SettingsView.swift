@@ -66,7 +66,7 @@ struct CemuSettingsState: Equatable {
     var playBootSound: Int32 = 0
     var isTitleRunning: Int32 = 0
     var supportsCustomNetworkService: Int32 = 0
-
+    
     var graphicApi: Int32 = 0
     var vsync: Int32 = 0
     var asyncCompile: Int32 = 0
@@ -81,7 +81,7 @@ struct CemuSettingsState: Equatable {
     var upscaleFilter: Int32 = 0
     var downscaleFilter: Int32 = 0
     var fullscreenScaling: Int32 = 0
-
+    
     var audioApi: Int32 = 0
     var audioDelay: Int32 = 0
     var tvChannels: Int32 = 1
@@ -91,7 +91,7 @@ struct CemuSettingsState: Equatable {
     var padVolume: Int32 = 100
     var inputVolume: Int32 = 100
     var portalVolume: Int32 = 100
-
+    
     var overlayPosition: Int32 = 0
     var overlayTextScale: Int32 = 100
     var overlayTextColor: UInt32 = 0xFFFF_FFFF
@@ -102,7 +102,7 @@ struct CemuSettingsState: Equatable {
     var overlayRamUsage: Int32 = 0
     var overlayVramUsage: Int32 = 0
     var overlayDebug: Int32 = 0
-
+    
     var notificationPosition: Int32 = 1
     var notificationTextScale: Int32 = 100
     var notificationTextColor: UInt32 = 0xFFFF_FFFF
@@ -110,10 +110,10 @@ struct CemuSettingsState: Equatable {
     var notificationControllerBattery: Int32 = 0
     var notificationShaderCompiling: Int32 = 1
     var notificationFriends: Int32 = 1
-
+    
     var activeAccountPersistentId: UInt32 = 0
     var activeAccountNetworkService: Int32 = 0
-
+    
     var crashDump: Int32 = 0
     var gdbPort: Int32 = 1337
     var framebufferFetch: Int32 = 0
@@ -138,9 +138,9 @@ enum GraphicsAPI: Int32, CaseIterable, Identifiable {
     case openGL = 0
     case vulkan = 1
     case metal = 2
-
+    
     var id: Int32 { rawValue }
-
+    
     var title: String {
         switch self {
         case .openGL: return "OpenGL"
@@ -160,9 +160,9 @@ enum AudioAPI: Int32, CaseIterable, Identifiable {
     case xAudio27 = 1
     case xAudio2 = 2
     case cubeb = 3
-
+    
     var id: Int32 { rawValue }
-
+    
     var title: String {
         switch self {
         case .directSound: return "DirectSound"
@@ -181,9 +181,9 @@ enum SettingsPosition: Int32, CaseIterable, Identifiable {
     case bottomLeft = 4
     case bottomCenter = 5
     case bottomRight = 6
-
+    
     var id: Int32 { rawValue }
-
+    
     var title: String {
         switch self {
         case .disabled: return "Disabled"
@@ -202,9 +202,9 @@ enum NetworkServiceOption: Int32, CaseIterable, Identifiable {
     case nintendo = 1
     case pretendo = 2
     case custom = 3
-
+    
     var id: Int32 { rawValue }
-
+    
     var title: String {
         switch self {
         case .offline: return "Offline"
@@ -227,7 +227,7 @@ enum ScalePreset: Int32, CaseIterable, Identifiable {
     case x250 = 250
     case x275 = 275
     case x300 = 300
-
+    
     var id: Int32 { rawValue }
     var title: String { "\(rawValue)%" }
 }
@@ -243,10 +243,10 @@ final class SettingsStore: ObservableObject {
     @Published var gpuCaptureDir = ""
     @Published var defaultGpuCaptureDir = ""
     @Published var selectedGamePath: String?
-
+    
     private var autosaveWorkItem: DispatchWorkItem?
     private var isLoading = false
-
+    
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),
         LanguageOption(id: 1, title: "Japanese"),
@@ -262,11 +262,11 @@ final class SettingsStore: ObservableObject {
         LanguageOption(id: 11, title: "Russian"),
         LanguageOption(id: 12, title: "Taiwanese"),
     ]
-
+    
     func load() {
         isLoading = true
         defer { isLoading = false }
-
+        
         var loaded = CemuSettingsState()
         if CemuSettingsLoad(&loaded) {
             state = loaded
@@ -284,19 +284,19 @@ final class SettingsStore: ObservableObject {
             state.activeAccountPersistentId = first.persistentId
         }
     }
-
+    
     private func persist() {
         var snapshot = state
         _ = CemuSettingsSave(&snapshot)
         mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
         gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
     }
-
+    
     func scheduleAutosave() {
         guard !isLoading else {
             return
         }
-
+        
         autosaveWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             self?.persist()
@@ -304,11 +304,11 @@ final class SettingsStore: ObservableObject {
         autosaveWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
     }
-
+    
     func closeWindow() {
         NSApp.keyWindow?.close()
     }
-
+    
     func reloadGamePaths() {
         var paths: [String] = []
         let count = CemuSettingsGetGamePathCount()
@@ -320,7 +320,7 @@ final class SettingsStore: ObservableObject {
             selectedGamePath = nil
         }
     }
-
+    
     func addGamePath() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -337,24 +337,24 @@ final class SettingsStore: ObservableObject {
         path.withCString { _ = CemuSettingsAddGamePath($0) }
         reloadGamePaths()
     }
-
+    
     func removeGamePath(at offsets: IndexSet) {
         for idx in offsets.sorted(by: >) {
             _ = CemuSettingsRemoveGamePath(UInt64(idx))
         }
         reloadGamePaths()
     }
-
+    
     func removeSelectedGamePath() {
         guard let selectedGamePath,
-            let idx = gamePaths.firstIndex(of: selectedGamePath)
+              let idx = gamePaths.firstIndex(of: selectedGamePath)
         else {
             return
         }
         _ = CemuSettingsRemoveGamePath(UInt64(idx))
         reloadGamePaths()
     }
-
+    
     func reloadAccounts() {
         var values: [AccountEntry] = []
         let count = CemuSettingsGetAccountCount()
@@ -365,7 +365,7 @@ final class SettingsStore: ObservableObject {
         }
         accounts = values
     }
-
+    
     func createAccount() {
         let trimmed = newAccountName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
@@ -381,7 +381,7 @@ final class SettingsStore: ObservableObject {
             state.activeAccountPersistentId = createdId
         }
     }
-
+    
     func deleteSelectedAccount() {
         guard state.activeAccountPersistentId != 0 else {
             return
@@ -392,7 +392,7 @@ final class SettingsStore: ObservableObject {
             state.activeAccountPersistentId = accounts.first?.persistentId ?? 0
         }
     }
-
+    
     var availableGraphicsAPIs: [GraphicsAPI] {
         var values: [GraphicsAPI] = []
         if state.supportsVulkan != 0 {
@@ -406,11 +406,11 @@ final class SettingsStore: ObservableObject {
         }
         return values
     }
-
+    
     var showCustomNetwork: Bool {
         state.supportsCustomNetworkService != 0
     }
-
+    
     static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
         guard let ptr else {
             return ""
@@ -423,7 +423,7 @@ final class SettingsStore: ObservableObject {
 
 struct SettingsView: View {
     @StateObject var store = SettingsStore()
-
+    
     private var selectedTabBinding: Binding<SettingsTab?> {
         Binding<SettingsTab?>(
             get: { store.selectedTab },
@@ -435,7 +435,7 @@ struct SettingsView: View {
             }
         )
     }
-
+    
     @ViewBuilder
     var selectedTabView: some View {
         switch store.selectedTab {
@@ -447,7 +447,7 @@ struct SettingsView: View {
         case .debug: debugTab
         }
     }
-
+    
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
@@ -478,7 +478,7 @@ struct SettingsView: View {
             store.scheduleAutosave()
         }
     }
-
+    
     func sliderRow(_ title: String, value: Binding<Int32>, step: Double) -> some View {
         HStack {
             Text(title)
@@ -492,7 +492,7 @@ struct SettingsView: View {
                 .frame(width: 44, alignment: .trailing)
         }
     }
-
+    
     func colorRow(_ title: String, value: Binding<UInt32>) -> some View {
         let colorBinding = Binding<Color>(
             get: {
@@ -515,7 +515,7 @@ struct SettingsView: View {
                 value.wrappedValue = (r << 24) | (g << 16) | (b << 8) | a
             }
         )
-
+        
         return HStack {
             Text(title)
             Spacer()
@@ -523,7 +523,7 @@ struct SettingsView: View {
                 .labelsHidden()
         }
     }
-
+    
     func boolBinding(_ keyPath: WritableKeyPath<CemuSettingsState, Int32>) -> Binding<Bool> {
         Binding<Bool>(
             get: { store.state[keyPath: keyPath] != 0 },
@@ -534,11 +534,11 @@ struct SettingsView: View {
 
 extension SettingsTab: Identifiable {
     var id: String { rawValue }
-
+    
     var title: String {
         rawValue
     }
-
+    
     var symbolName: String {
         switch self {
         case .general: return "slider.horizontal.3"
@@ -561,10 +561,10 @@ public func CemuShowSettingsWindow() {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-
+        
         let view = SettingsView()
         let contentController = NSHostingController(rootView: view)
-
+        
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -578,7 +578,7 @@ public func CemuShowSettingsWindow() {
         window.contentViewController = contentController
         window.center()
         window.isReleasedWhenClosed = false
-
+        
         let controller = NSWindowController(window: window)
         settingsWindowController = controller
         controller.showWindow(nil)

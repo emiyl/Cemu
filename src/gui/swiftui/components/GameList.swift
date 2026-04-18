@@ -19,7 +19,7 @@ private enum GameListColumnIndex {
 private func makeGameListColumns(totalWidth: CGFloat) -> [GameListColumn] {
     let iconWidth: CGFloat = 48
     let contentWidth = max(0, totalWidth - iconWidth)
-
+    
     return [
         GameListColumn(title: "", width: iconWidth, alignment: .center),
         GameListColumn(title: "Name", width: contentWidth * 0.46, alignment: .leading),
@@ -73,7 +73,7 @@ struct GameItem: Identifiable {
     let version: UInt16
     let dlc: UInt16
     let region: String
-
+    
     var id: UInt64 { titleID }
 }
 
@@ -83,11 +83,11 @@ struct GameList: View {
     @State private var games: [GameItem] = []
     @State private var keyEventMonitor: Any?
     @State private var refreshRequestID = 0
-
+    
     var body: some View {
         GeometryReader { proxy in
             let columns = makeGameListColumns(totalWidth: proxy.size.width)
-
+            
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     GameListHeaderView(columns: columns)
@@ -119,7 +119,7 @@ struct GameList: View {
                     }
                     .background(Color(nsColor: .controlBackgroundColor))
                 }
-
+                
                 if showUpdatingBanner {
                     GameListInfoBarView(message: "Updating game list...") {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -148,53 +148,53 @@ struct GameList: View {
             refreshRequestID += 1
         }
     }
-
+    
     private func refreshGameList() {
         refreshRequestID += 1
         let currentRefreshRequestID = refreshRequestID
-
+        
         withAnimation(.easeInOut(duration: 0.2)) {
             showUpdatingBanner = true
         }
-
+        
         CemuGameListRefresh()
         waitForRefreshCompletion(requestID: currentRefreshRequestID)
     }
-
+    
     private func waitForRefreshCompletion(requestID: Int) {
         guard requestID == refreshRequestID else {
             return
         }
-
+        
         if !CemuGameListIsScanning() {
             loadGamesFromProvider {
                 guard requestID == refreshRequestID else {
                     return
                 }
-
+                
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showUpdatingBanner = false
                 }
             }
             return
         }
-
+        
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             waitForRefreshCompletion(requestID: requestID)
         }
     }
-
+    
     private func launchGame(titleID: UInt64) {
         _ = CemuSwiftUILaunchTitleById(titleID)
     }
-
+    
     private func launchSelectedGame() {
         guard let selectedTitleID else {
             return
         }
         launchGame(titleID: selectedTitleID)
     }
-
+    
     private func loadGamesFromProvider(completion: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .userInitiated).async {
             var newGames: [GameItem] = []
@@ -214,7 +214,7 @@ struct GameList: View {
                     let regionPtr = row.region
                     if let namePtr = row.name {
                         defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
-
+                        
                         let name = String(cString: namePtr)
                         let region = regionPtr.map { String(cString: $0) } ?? ""
                         var image: NSImage?
@@ -247,7 +247,7 @@ struct GameList: View {
                     }
                 }
             }
-
+            
             DispatchQueue.main.async {
                 self.games = newGames
                 completion?()
@@ -258,7 +258,7 @@ struct GameList: View {
 
 private struct GameListHeaderView: View {
     let columns: [GameListColumn]
-
+    
     var body: some View {
         HStack(spacing: 0) {
             ForEach(columns.indices, id: \.self) { index in
@@ -280,7 +280,7 @@ private struct GameListRowView: View {
     let columns: [GameListColumn]
     let isSelected: Bool
     let isAlternateRow: Bool
-
+    
     var body: some View {
         HStack(spacing: 0) {
             Group {
@@ -339,7 +339,7 @@ private struct GameListRowView: View {
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
     }
-
+    
     private var backgroundColor: Color {
         if isSelected {
             return Color(nsColor: .selectedContentBackgroundColor)
@@ -354,14 +354,14 @@ private struct GameListRowView: View {
 private struct GameListRowInteractionView: NSViewRepresentable {
     let onSelect: () -> Void
     let onLaunch: () -> Void
-
+    
     func makeNSView(context: Context) -> GameListRowInteractionNSView {
         let view = GameListRowInteractionNSView()
         view.onSelect = onSelect
         view.onLaunch = onLaunch
         return view
     }
-
+    
     func updateNSView(_ nsView: GameListRowInteractionNSView, context: Context) {
         nsView.onSelect = onSelect
         nsView.onLaunch = onLaunch
@@ -371,15 +371,15 @@ private struct GameListRowInteractionView: NSViewRepresentable {
 private final class GameListRowInteractionNSView: NSView {
     var onSelect: (() -> Void)?
     var onLaunch: (() -> Void)?
-
+    
     override var acceptsFirstResponder: Bool {
         true
     }
-
+    
     override func hitTest(_ point: NSPoint) -> NSView? {
         self
     }
-
+    
     override func mouseDown(with event: NSEvent) {
         if event.clickCount >= 2 {
             onLaunch?()
@@ -387,7 +387,7 @@ private final class GameListRowInteractionNSView: NSView {
             onSelect?()
         }
     }
-
+    
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         let startItem = NSMenuItem(
@@ -396,7 +396,7 @@ private final class GameListRowInteractionNSView: NSView {
         menu.addItem(startItem)
         return menu
     }
-
+    
     @objc private func startAction(_ sender: Any?) {
         onSelect?()
         onLaunch?()
@@ -406,18 +406,18 @@ private final class GameListRowInteractionNSView: NSView {
 struct GameListInfoBarView: View {
     let message: String
     let onDismiss: () -> Void
-
+    
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-
+            
             Text(message)
                 .font(.system(size: 12))
-
+            
             Spacer()
-
+            
             Button("Dismiss", action: onDismiss)
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .medium))

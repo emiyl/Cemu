@@ -34,7 +34,7 @@ extension SettingsView {
                 Toggle("VRAM usage", isOn: boolBinding(\CemuSettingsState.overlayVramUsage))
                 Toggle("Debug", isOn: boolBinding(\CemuSettingsState.overlayDebug))
             }
-
+            
             Section("Notifications") {
                 Picker("Position", selection: $store.state.notificationPosition) {
                     ForEach(SettingsPosition.allCases) { option in

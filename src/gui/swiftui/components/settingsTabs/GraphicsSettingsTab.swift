@@ -9,7 +9,7 @@ extension SettingsView {
                         Text(api.title).tag(api.rawValue)
                     }
                 }
-
+                
                 Picker("VSync", selection: $store.state.vsync) {
                     Text("Off").tag(Int32(0))
                     Text("On").tag(Int32(1))
@@ -17,7 +17,7 @@ extension SettingsView {
                     Text("Match emulated display").tag(Int32(3))
                 }
             }
-
+            
             Section("Behavior") {
                 Toggle("Async shader compile", isOn: boolBinding(\CemuSettingsState.asyncCompile))
                 if store.state.supportsMetal != 0 {
@@ -27,7 +27,7 @@ extension SettingsView {
                     .disabled(store.state.graphicApi == GraphicsAPI.vulkan.rawValue)
                 }
             }
-
+            
             if false {
                 Section("Gamma") {
                     Toggle(
@@ -60,7 +60,7 @@ extension SettingsView {
                     }
                 }
             }
-
+            
             Section("Filtering") {
                 Picker("Upscale filter", selection: $store.state.upscaleFilter) {
                     Text("Bilinear").tag(Int32(0))

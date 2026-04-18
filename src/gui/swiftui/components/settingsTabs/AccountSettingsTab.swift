@@ -10,7 +10,7 @@ extension SettingsView {
                     }
                 }
                 .disabled(store.state.isTitleRunning != 0)
-
+                
                 Picker("Network Service", selection: $store.state.activeAccountNetworkService) {
                     Text(NetworkServiceOption.offline.title).tag(
                         NetworkServiceOption.offline.rawValue)
@@ -24,20 +24,20 @@ extension SettingsView {
                     }
                 }
                 .disabled(store.state.isTitleRunning != 0)
-
+                
                 HStack {
                     TextField("New account name", text: $store.newAccountName)
                     Button("Create") {
                         store.createAccount()
                     }
                     .disabled(store.state.isTitleRunning != 0)
-
+                    
                     Button("Delete") {
                         store.deleteSelectedAccount()
                     }
                     .disabled(store.state.isTitleRunning != 0 || store.accounts.count <= 1)
                 }
-
+                
                 Button("Reload Accounts") {
                     store.reloadAccounts()
                 }
