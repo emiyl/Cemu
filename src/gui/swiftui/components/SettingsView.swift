@@ -57,7 +57,7 @@ private func CemuSettingsCreateAccount(
 @_silgen_name("CemuSettingsDeleteAccount")
 private func CemuSettingsDeleteAccount(_ persistentId: UInt32) -> Bool
 
-struct CemuSettingsState {
+struct CemuSettingsState: Equatable {
     var language: Int32 = 0
     var useDiscordPresence: Int32 = 0
     var saveScreenshots: Int32 = 0
@@ -244,6 +244,9 @@ final class SettingsStore: ObservableObject {
     @Published var defaultGpuCaptureDir = ""
     @Published var selectedGamePath: String?
 
+    private var autosaveWorkItem: DispatchWorkItem?
+    private var isLoading = false
+
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),
         LanguageOption(id: 1, title: "Japanese"),
@@ -261,6 +264,9 @@ final class SettingsStore: ObservableObject {
     ]
 
     func load() {
+        isLoading = true
+        defer { isLoading = false }
+
         var loaded = CemuSettingsState()
         if CemuSettingsLoad(&loaded) {
             state = loaded
@@ -279,12 +285,24 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    func save() {
+    private func persist() {
         var snapshot = state
         _ = CemuSettingsSave(&snapshot)
         mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
         gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
-        load()
+    }
+
+    func scheduleAutosave() {
+        guard !isLoading else {
+            return
+        }
+
+        autosaveWorkItem?.cancel()
+        let item = DispatchWorkItem { [weak self] in
+            self?.persist()
+        }
+        autosaveWorkItem = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
     }
 
     func closeWindow() {
@@ -418,6 +436,18 @@ struct SettingsView: View {
         )
     }
 
+    @ViewBuilder
+    var selectedTabView: some View {
+        switch store.selectedTab {
+        case .general: generalTab
+        case .graphics: graphicsTab
+        case .audio: audioTab
+        case .overlay: overlayTab
+        case .account: accountTab
+        case .debug: debugTab
+        }
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
@@ -428,46 +458,24 @@ struct SettingsView: View {
                 .listStyle(.sidebar)
                 .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
             } detail: {
-                Group {
-                    switch store.selectedTab {
-                    case .general:
-                        generalTab
-                    case .graphics:
-                        graphicsTab
-                    case .audio:
-                        audioTab
-                    case .overlay:
-                        overlayTab
-                    case .account:
-                        accountTab
-                    case .debug:
-                        debugTab
-                    }
-                }
-                .padding(16)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                selectedTabView
+                    .padding(16)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             }
             .navigationSplitViewStyle(.balanced)
-
-            Divider()
-
-            HStack {
-                Spacer()
-                Button("Cancel") {
-                    store.load()
-                    store.closeWindow()
-                }
-                Button("Apply") {
-                    store.save()
-                    store.closeWindow()
-                }
-                .keyboardShortcut(.return, modifiers: [.command])
-            }
-            .padding(12)
         }
         .frame(minWidth: 860, minHeight: 620)
         .onAppear {
             store.load()
+        }
+        .onChange(of: store.state) {
+            store.scheduleAutosave()
+        }
+        .onChange(of: store.mlcPath) {
+            store.scheduleAutosave()
+        }
+        .onChange(of: store.gpuCaptureDir) {
+            store.scheduleAutosave()
         }
     }
 
