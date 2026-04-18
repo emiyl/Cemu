@@ -13,11 +13,15 @@
 #include "input/InputManager.h"
 #include "util/SystemInfo/SystemInfo.h"
 
-#include <cinttypes>
+#include <algorithm>
+#include <array>
+#include <cstddef>
+#include <numeric>
 
 struct OverlayStats
 {
 	OverlayStats() {};
+	static constexpr size_t kFrametimeHistorySize = 300;
 
 	int processor_count = 1;
 	ProcessorTime processor_time_cemu;
@@ -26,6 +30,10 @@ struct OverlayStats
 	double fps{};
 	uint32 draw_calls_per_frame{};
 	uint32 fast_draw_calls_per_frame{};
+	float frametime_ms{};
+	std::array<float, kFrametimeHistorySize> frametime_history{};
+	size_t frametime_history_index{};
+	size_t frametime_history_count{};
 	float cpu_usage{}; // cemu cpu usage in %
 	std::vector<float> cpu_per_core; // global cpu usage in % per core
 	uint32 ram_usage{}; // ram usage in MB
@@ -52,6 +60,15 @@ void LatteOverlay_pushNotification(const std::string& text, sint32 duration)
 	g_notifications.emplace_back(text, duration);
 }
 
+void LatteOverlay_pushFrametimeSample(float frametime_ms)
+{
+	g_state.frametime_ms = frametime_ms;
+	g_state.frametime_history[g_state.frametime_history_index] = frametime_ms;
+	g_state.frametime_history_index = (g_state.frametime_history_index + 1) % g_state.frametime_history.size();
+	if (g_state.frametime_history_count < g_state.frametime_history.size())
+		++g_state.frametime_history_count;
+}
+
 struct OverlayList
 {
 	std::wstring text;
@@ -76,7 +93,7 @@ void LatteOverlay_renderOverlay(ImVec2& position, ImVec2& pivot, sint32 directio
 	const ImVec4 color = ImGui::ColorConvertU32ToFloat4(config.overlay.text_color);
 	ImGui::PushStyleColor(ImGuiCol_Text, color);
 	// stats overlay
-	if (config.overlay.fps || config.overlay.drawcalls || config.overlay.cpu_usage || config.overlay.cpu_per_core_usage || config.overlay.ram_usage)
+	if (config.overlay.fps || config.overlay.advanced_fps || config.overlay.drawcalls || config.overlay.cpu_usage || config.overlay.cpu_per_core_usage || config.overlay.ram_usage || config.overlay.debug)
 	{
 		ImGui::SetNextWindowPos(position, ImGuiCond_Always, pivot);
 		ImGui::SetNextWindowBgAlpha(kBackgroundAlpha);
@@ -84,6 +101,39 @@ void LatteOverlay_renderOverlay(ImVec2& position, ImVec2& pivot, sint32 directio
 		{
 			if (config.overlay.fps)
 				ImGui::Text("FPS: %.2lf", g_state.fps);
+
+			if (config.overlay.fps && config.overlay.advanced_fps)
+				ImGui::Separator();
+
+			if (config.overlay.advanced_fps && g_state.frametime_history_count > 0)
+			{
+				const size_t history_size = g_state.frametime_history_count;
+				std::array<float, OverlayStats::kFrametimeHistorySize> frametime_plot_values{};
+				const size_t history_offset = (g_state.frametime_history_index + g_state.frametime_history.size() - history_size) % g_state.frametime_history.size();
+				for (size_t i = 0; i < history_size; ++i)
+					frametime_plot_values[i] = g_state.frametime_history[(history_offset + i) % g_state.frametime_history.size()];
+
+				std::array<float, OverlayStats::kFrametimeHistorySize> frametime_samples = frametime_plot_values;
+				std::sort(frametime_samples.begin(), frametime_samples.begin() + history_size, std::greater<float>());
+				const size_t low_sample_count = std::max<size_t>(1, history_size / 100);
+				float low_frametime_sum = 0.0f;
+				for (size_t i = 0; i < low_sample_count; ++i)
+					low_frametime_sum += frametime_samples[i];
+
+				const double one_percent_low_fps = (double)low_sample_count * 1000.0 / (double)low_frametime_sum;
+				const float frametime_sum = std::accumulate(frametime_plot_values.begin(), frametime_plot_values.begin() + history_size, 0.0f);
+				const double average_fps = (double)history_size * 1000.0 / (double)frametime_sum;
+
+				ImGui::Text("Average: %.2lf", average_fps);
+				ImGui::Text("1%% low: %.2lf", one_percent_low_fps);
+
+				float max_frametime = 0.0f;
+				for (size_t i = 0; i < history_size; ++i)
+					max_frametime = std::max(max_frametime, frametime_plot_values[i]);
+
+				max_frametime = std::max(max_frametime, 16.67f);
+				ImGui::PlotLines("##Frametime", frametime_plot_values.data(), (int)history_size, 0, nullptr, 0.0f, max_frametime, ImVec2(260.0f, 80.0f));
+			}
 
 			if (config.overlay.drawcalls)
 				ImGui::Text("Draws/f: %d (fast: %d)", g_state.draw_calls_per_frame, g_state.fast_draw_calls_per_frame);

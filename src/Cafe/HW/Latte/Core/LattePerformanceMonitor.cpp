@@ -9,6 +9,9 @@ void LattePerformanceMonitor_frameEnd()
 	// per-frame stats
 	performanceMonitor.gpuTime_shaderCreate.frameFinished();
 	performanceMonitor.gpuTime_frameTime.frameFinished();
+	const uint64 frametimeMicroseconds = PPCTimer_tscToMicroseconds(performanceMonitor.gpuTime_frameTime.getPreviousFrameValue());
+	if (frametimeMicroseconds != 0)
+		LatteOverlay_pushFrametimeSample((float)frametimeMicroseconds / 1000.0f);
 	performanceMonitor.gpuTime_idleTime.frameFinished();
 	performanceMonitor.gpuTime_fenceTime.frameFinished();
 

@@ -454,6 +454,7 @@ struct CemuConfig
 		uint32 text_color = 0xFFFFFFFF;
 		sint32 text_scale = 100;
 		bool fps = true;
+		bool advanced_fps = false;
 		bool drawcalls = false;
 		bool cpu_usage = false;
 		bool cpu_per_core_usage = false;
