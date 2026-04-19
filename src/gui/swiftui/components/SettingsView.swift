@@ -66,7 +66,7 @@ struct CemuSettingsState: Equatable {
     var playBootSound: Int32 = 0
     var isTitleRunning: Int32 = 0
     var supportsCustomNetworkService: Int32 = 0
-    
+
     var graphicApi: Int32 = 0
     var vsync: Int32 = 0
     var asyncCompile: Int32 = 0
@@ -81,7 +81,7 @@ struct CemuSettingsState: Equatable {
     var upscaleFilter: Int32 = 0
     var downscaleFilter: Int32 = 0
     var fullscreenScaling: Int32 = 0
-    
+
     var audioApi: Int32 = 0
     var audioDelay: Int32 = 0
     var tvChannels: Int32 = 1
@@ -91,7 +91,7 @@ struct CemuSettingsState: Equatable {
     var padVolume: Int32 = 100
     var inputVolume: Int32 = 100
     var portalVolume: Int32 = 100
-    
+
     var overlayPosition: Int32 = 0
     var overlayTextScale: Int32 = 100
     var overlayTextColor: UInt32 = 0xFFFF_FFFF
@@ -102,7 +102,7 @@ struct CemuSettingsState: Equatable {
     var overlayRamUsage: Int32 = 0
     var overlayVramUsage: Int32 = 0
     var overlayDebug: Int32 = 0
-    
+
     var notificationPosition: Int32 = 1
     var notificationTextScale: Int32 = 100
     var notificationTextColor: UInt32 = 0xFFFF_FFFF
@@ -110,13 +110,199 @@ struct CemuSettingsState: Equatable {
     var notificationControllerBattery: Int32 = 0
     var notificationShaderCompiling: Int32 = 1
     var notificationFriends: Int32 = 1
-    
+
     var activeAccountPersistentId: UInt32 = 0
     var activeAccountNetworkService: Int32 = 0
-    
+
     var crashDump: Int32 = 0
     var gdbPort: Int32 = 1337
     var framebufferFetch: Int32 = 0
+}
+
+protocol SettingsBackend: AnyObject {
+    func loadState() -> CemuSettingsState?
+    func saveState(_ state: CemuSettingsState, mlcPath: String, gpuCaptureDir: String)
+
+    func getMlcPath() -> String
+    func getDefaultMlcPath() -> String
+    func setMlcPath(_ path: String) -> Bool
+
+    func getGpuCaptureDir() -> String
+    func getDefaultGpuCaptureDir() -> String
+    func setGpuCaptureDir(_ path: String) -> Bool
+
+    func getGamePaths() -> [String]
+    func addGamePath(_ path: String) -> Bool
+    func removeGamePath(at index: UInt64) -> Bool
+
+    func getAccounts() -> [AccountEntry]
+    func createAccount(name: String) -> UInt32?
+    func deleteAccount(_ persistentId: UInt32) -> Bool
+}
+
+final class CemuSettingsBackend: SettingsBackend {
+    func loadState() -> CemuSettingsState? {
+        var loaded = CemuSettingsState()
+        if CemuSettingsLoad(&loaded) {
+            return loaded
+        }
+        return nil
+    }
+
+    func saveState(_ state: CemuSettingsState, mlcPath: String, gpuCaptureDir: String) {
+        var snapshot = state
+        _ = CemuSettingsSave(&snapshot)
+        mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
+        gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
+    }
+
+    func getMlcPath() -> String {
+        Self.consumeCString(CemuSettingsGetMlcPath())
+    }
+
+    func getDefaultMlcPath() -> String {
+        Self.consumeCString(CemuSettingsGetDefaultMlcPath())
+    }
+
+    func setMlcPath(_ path: String) -> Bool {
+        path.withCString { CemuSettingsSetMlcPath($0) }
+    }
+
+    func getGpuCaptureDir() -> String {
+        Self.consumeCString(CemuSettingsGetGpuCaptureDir())
+    }
+
+    func getDefaultGpuCaptureDir() -> String {
+        Self.consumeCString(CemuSettingsGetDefaultGpuCaptureDir())
+    }
+
+    func setGpuCaptureDir(_ path: String) -> Bool {
+        path.withCString { CemuSettingsSetGpuCaptureDir($0) }
+    }
+
+    func getGamePaths() -> [String] {
+        var paths: [String] = []
+        let count = CemuSettingsGetGamePathCount()
+        for i in 0..<count {
+            paths.append(Self.consumeCString(CemuSettingsGetGamePath(i)))
+        }
+        return paths
+    }
+
+    func addGamePath(_ path: String) -> Bool {
+        path.withCString { CemuSettingsAddGamePath($0) }
+    }
+
+    func removeGamePath(at index: UInt64) -> Bool {
+        CemuSettingsRemoveGamePath(index)
+    }
+
+    func getAccounts() -> [AccountEntry] {
+        var values: [AccountEntry] = []
+        let count = CemuSettingsGetAccountCount()
+        for i in 0..<count {
+            let id = CemuSettingsGetAccountPersistentId(i)
+            let name = Self.consumeCString(CemuSettingsGetAccountDisplayName(i))
+            values.append(AccountEntry(persistentId: id, displayName: name))
+        }
+        return values
+    }
+
+    func createAccount(name: String) -> UInt32? {
+        var createdId: UInt32 = 0
+        name.withCString {
+            _ = CemuSettingsCreateAccount($0, &createdId)
+        }
+        return createdId == 0 ? nil : createdId
+    }
+
+    func deleteAccount(_ persistentId: UInt32) -> Bool {
+        CemuSettingsDeleteAccount(persistentId)
+    }
+
+    private static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
+        guard let ptr else {
+            return ""
+        }
+        let string = String(cString: ptr)
+        CemuSettingsFreeBuffer(UnsafeMutableRawPointer(mutating: ptr))
+        return string
+    }
+}
+
+final class MockSettingsBackend: SettingsBackend {
+    private var state = CemuSettingsState()
+    private var mlcPath = "/mock/mlc"
+    private var defaultMlcPath = "/mock/default-mlc"
+    private var gpuCaptureDir = "/mock/gpu-captures"
+    private var defaultGpuCaptureDir = "/mock/default-gpu-captures"
+    private var gamePaths = ["/mock/games"]
+    private var accounts = [
+        AccountEntry(persistentId: 1, displayName: "Mock User")
+    ]
+    private var nextAccountId: UInt32 = 2
+
+    func loadState() -> CemuSettingsState? {
+        state
+    }
+
+    func saveState(_ state: CemuSettingsState, mlcPath: String, gpuCaptureDir: String) {
+        self.state = state
+        self.mlcPath = mlcPath
+        self.gpuCaptureDir = gpuCaptureDir
+    }
+
+    func getMlcPath() -> String { mlcPath }
+    func getDefaultMlcPath() -> String { defaultMlcPath }
+
+    func setMlcPath(_ path: String) -> Bool {
+        mlcPath = path
+        return true
+    }
+
+    func getGpuCaptureDir() -> String { gpuCaptureDir }
+    func getDefaultGpuCaptureDir() -> String { defaultGpuCaptureDir }
+
+    func setGpuCaptureDir(_ path: String) -> Bool {
+        gpuCaptureDir = path
+        return true
+    }
+
+    func getGamePaths() -> [String] { gamePaths }
+
+    func addGamePath(_ path: String) -> Bool {
+        guard !path.isEmpty, !gamePaths.contains(path) else {
+            return false
+        }
+        gamePaths.append(path)
+        return true
+    }
+
+    func removeGamePath(at index: UInt64) -> Bool {
+        guard index < UInt64(gamePaths.count) else {
+            return false
+        }
+        gamePaths.remove(at: Int(index))
+        return true
+    }
+
+    func getAccounts() -> [AccountEntry] { accounts }
+
+    func createAccount(name: String) -> UInt32? {
+        guard !name.isEmpty else {
+            return nil
+        }
+        let id = nextAccountId
+        nextAccountId += 1
+        accounts.append(AccountEntry(persistentId: id, displayName: name))
+        return id
+    }
+
+    func deleteAccount(_ persistentId: UInt32) -> Bool {
+        let originalCount = accounts.count
+        accounts.removeAll { $0.persistentId == persistentId }
+        return accounts.count != originalCount
+    }
 }
 
 struct AccountEntry: Identifiable {
@@ -138,9 +324,9 @@ enum GraphicsAPI: Int32, CaseIterable, Identifiable {
     case openGL = 0
     case vulkan = 1
     case metal = 2
-    
+
     var id: Int32 { rawValue }
-    
+
     var title: String {
         switch self {
         case .openGL: return "OpenGL"
@@ -160,9 +346,9 @@ enum AudioAPI: Int32, CaseIterable, Identifiable {
     case xAudio27 = 1
     case xAudio2 = 2
     case cubeb = 3
-    
+
     var id: Int32 { rawValue }
-    
+
     var title: String {
         switch self {
         case .directSound: return "DirectSound"
@@ -181,9 +367,9 @@ enum SettingsPosition: Int32, CaseIterable, Identifiable {
     case bottomLeft = 4
     case bottomCenter = 5
     case bottomRight = 6
-    
+
     var id: Int32 { rawValue }
-    
+
     var title: String {
         switch self {
         case .disabled: return "Disabled"
@@ -202,9 +388,9 @@ enum NetworkServiceOption: Int32, CaseIterable, Identifiable {
     case nintendo = 1
     case pretendo = 2
     case custom = 3
-    
+
     var id: Int32 { rawValue }
-    
+
     var title: String {
         switch self {
         case .offline: return "Offline"
@@ -227,12 +413,14 @@ enum ScalePreset: Int32, CaseIterable, Identifiable {
     case x250 = 250
     case x275 = 275
     case x300 = 300
-    
+
     var id: Int32 { rawValue }
     var title: String { "\(rawValue)%" }
 }
 
 final class SettingsStore: ObservableObject {
+    private let backend: SettingsBackend
+
     @Published var state = CemuSettingsState()
     @Published var selectedTab: SettingsTab = .general
     @Published var gamePaths: [String] = []
@@ -243,10 +431,10 @@ final class SettingsStore: ObservableObject {
     @Published var gpuCaptureDir = ""
     @Published var defaultGpuCaptureDir = ""
     @Published var selectedGamePath: String?
-    
+
     private var autosaveWorkItem: DispatchWorkItem?
     private var isLoading = false
-    
+
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),
         LanguageOption(id: 1, title: "Japanese"),
@@ -262,41 +450,41 @@ final class SettingsStore: ObservableObject {
         LanguageOption(id: 11, title: "Russian"),
         LanguageOption(id: 12, title: "Taiwanese"),
     ]
-    
+
+    init(backend: SettingsBackend) {
+        self.backend = backend
+    }
+
     func load() {
         isLoading = true
         defer { isLoading = false }
-        
-        var loaded = CemuSettingsState()
-        if CemuSettingsLoad(&loaded) {
+
+        if let loaded = backend.loadState() {
             state = loaded
         }
         if !availableLanguages.contains(where: { $0.id == state.language }) {
             state.language = 0
         }
-        mlcPath = Self.consumeCString(CemuSettingsGetMlcPath())
-        defaultMlcPath = Self.consumeCString(CemuSettingsGetDefaultMlcPath())
-        gpuCaptureDir = Self.consumeCString(CemuSettingsGetGpuCaptureDir())
-        defaultGpuCaptureDir = Self.consumeCString(CemuSettingsGetDefaultGpuCaptureDir())
+        mlcPath = backend.getMlcPath()
+        defaultMlcPath = backend.getDefaultMlcPath()
+        gpuCaptureDir = backend.getGpuCaptureDir()
+        defaultGpuCaptureDir = backend.getDefaultGpuCaptureDir()
         reloadGamePaths()
         reloadAccounts()
         if state.activeAccountPersistentId == 0, let first = accounts.first {
             state.activeAccountPersistentId = first.persistentId
         }
     }
-    
+
     private func persist() {
-        var snapshot = state
-        _ = CemuSettingsSave(&snapshot)
-        mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
-        gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
+        backend.saveState(state, mlcPath: mlcPath, gpuCaptureDir: gpuCaptureDir)
     }
-    
+
     func scheduleAutosave() {
         guard !isLoading else {
             return
         }
-        
+
         autosaveWorkItem?.cancel()
         let item = DispatchWorkItem { [weak self] in
             self?.persist()
@@ -304,23 +492,19 @@ final class SettingsStore: ObservableObject {
         autosaveWorkItem = item
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: item)
     }
-    
+
     func closeWindow() {
         NSApp.keyWindow?.close()
     }
-    
+
     func reloadGamePaths() {
-        var paths: [String] = []
-        let count = CemuSettingsGetGamePathCount()
-        for i in 0..<count {
-            paths.append(Self.consumeCString(CemuSettingsGetGamePath(i)))
-        }
+        let paths = backend.getGamePaths()
         gamePaths = paths
         if !paths.contains(selectedGamePath ?? "") {
             selectedGamePath = nil
         }
     }
-    
+
     func addGamePath() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
@@ -334,65 +518,55 @@ final class SettingsStore: ObservableObject {
             return
         }
         let path = url.path
-        path.withCString { _ = CemuSettingsAddGamePath($0) }
+        _ = backend.addGamePath(path)
         reloadGamePaths()
     }
-    
+
     func removeGamePath(at offsets: IndexSet) {
         for idx in offsets.sorted(by: >) {
-            _ = CemuSettingsRemoveGamePath(UInt64(idx))
+            _ = backend.removeGamePath(at: UInt64(idx))
         }
         reloadGamePaths()
     }
-    
+
     func removeSelectedGamePath() {
         guard let selectedGamePath,
-              let idx = gamePaths.firstIndex(of: selectedGamePath)
+            let idx = gamePaths.firstIndex(of: selectedGamePath)
         else {
             return
         }
-        _ = CemuSettingsRemoveGamePath(UInt64(idx))
+        _ = backend.removeGamePath(at: UInt64(idx))
         reloadGamePaths()
     }
-    
+
     func reloadAccounts() {
-        var values: [AccountEntry] = []
-        let count = CemuSettingsGetAccountCount()
-        for i in 0..<count {
-            let id = CemuSettingsGetAccountPersistentId(i)
-            let name = Self.consumeCString(CemuSettingsGetAccountDisplayName(i))
-            values.append(AccountEntry(persistentId: id, displayName: name))
-        }
-        accounts = values
+        accounts = backend.getAccounts()
     }
-    
+
     func createAccount() {
         let trimmed = newAccountName.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             return
         }
-        var createdId: UInt32 = 0
-        trimmed.withCString {
-            _ = CemuSettingsCreateAccount($0, &createdId)
-        }
+        let createdId = backend.createAccount(name: trimmed)
         newAccountName = ""
         reloadAccounts()
-        if createdId != 0 {
+        if let createdId {
             state.activeAccountPersistentId = createdId
         }
     }
-    
+
     func deleteSelectedAccount() {
         guard state.activeAccountPersistentId != 0 else {
             return
         }
-        _ = CemuSettingsDeleteAccount(state.activeAccountPersistentId)
+        _ = backend.deleteAccount(state.activeAccountPersistentId)
         reloadAccounts()
         if !accounts.contains(where: { $0.persistentId == state.activeAccountPersistentId }) {
             state.activeAccountPersistentId = accounts.first?.persistentId ?? 0
         }
     }
-    
+
     var availableGraphicsAPIs: [GraphicsAPI] {
         var values: [GraphicsAPI] = []
         if state.supportsVulkan != 0 {
@@ -406,24 +580,19 @@ final class SettingsStore: ObservableObject {
         }
         return values
     }
-    
+
     var showCustomNetwork: Bool {
         state.supportsCustomNetworkService != 0
-    }
-    
-    static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
-        guard let ptr else {
-            return ""
-        }
-        let string = String(cString: ptr)
-        CemuSettingsFreeBuffer(UnsafeMutableRawPointer(mutating: ptr))
-        return string
     }
 }
 
 struct SettingsView: View {
-    @StateObject var store = SettingsStore()
-    
+    @StateObject var store: SettingsStore
+
+    init(backend: SettingsBackend = CemuSettingsBackend()) {
+        _store = StateObject(wrappedValue: SettingsStore(backend: backend))
+    }
+
     private var selectedTabBinding: Binding<SettingsTab?> {
         Binding<SettingsTab?>(
             get: { store.selectedTab },
@@ -435,7 +604,7 @@ struct SettingsView: View {
             }
         )
     }
-    
+
     @ViewBuilder
     var selectedTabView: some View {
         switch store.selectedTab {
@@ -447,7 +616,7 @@ struct SettingsView: View {
         case .debug: debugTab
         }
     }
-    
+
     var body: some View {
         VStack(spacing: 0) {
             NavigationSplitView {
@@ -478,7 +647,7 @@ struct SettingsView: View {
             store.scheduleAutosave()
         }
     }
-    
+
     func sliderRow(_ title: String, value: Binding<Int32>, step: Double) -> some View {
         HStack {
             Text(title)
@@ -492,7 +661,7 @@ struct SettingsView: View {
                 .frame(width: 44, alignment: .trailing)
         }
     }
-    
+
     func colorRow(_ title: String, value: Binding<UInt32>) -> some View {
         let colorBinding = Binding<Color>(
             get: {
@@ -515,7 +684,7 @@ struct SettingsView: View {
                 value.wrappedValue = (r << 24) | (g << 16) | (b << 8) | a
             }
         )
-        
+
         return HStack {
             Text(title)
             Spacer()
@@ -523,7 +692,7 @@ struct SettingsView: View {
                 .labelsHidden()
         }
     }
-    
+
     func boolBinding(_ keyPath: WritableKeyPath<CemuSettingsState, Int32>) -> Binding<Bool> {
         Binding<Bool>(
             get: { store.state[keyPath: keyPath] != 0 },
@@ -534,11 +703,11 @@ struct SettingsView: View {
 
 extension SettingsTab: Identifiable {
     var id: String { rawValue }
-    
+
     var title: String {
         rawValue
     }
-    
+
     var symbolName: String {
         switch self {
         case .general: return "slider.horizontal.3"
@@ -561,10 +730,10 @@ public func CemuShowSettingsWindow() {
             NSApp.activate(ignoringOtherApps: true)
             return
         }
-        
+
         let view = SettingsView()
         let contentController = NSHostingController(rootView: view)
-        
+
         let window = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
             styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
@@ -578,10 +747,14 @@ public func CemuShowSettingsWindow() {
         window.contentViewController = contentController
         window.center()
         window.isReleasedWhenClosed = false
-        
+
         let controller = NSWindowController(window: window)
         settingsWindowController = controller
         controller.showWindow(nil)
         NSApp.activate(ignoringOtherApps: true)
     }
+}
+
+#Preview {
+    SettingsView(backend: MockSettingsBackend())
 }
