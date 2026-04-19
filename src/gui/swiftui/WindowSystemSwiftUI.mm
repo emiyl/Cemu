@@ -128,16 +128,6 @@ void WindowSystem::Create() {
         [windowContentView layoutSubtreeIfNeeded];
         UpdateMainWindowMetricsFromRendererHostView();
         
-        std::string rendererError;
-        if (!InitializeRendererForMainView(
-                                           g_renderer_host_view, (int)g_window_info.width.load(),
-                                           (int)g_window_info.height.load(), rendererError)) {
-                                               WindowSystem::ShowErrorDialog(rendererError,
-                                                                             "Renderer initialization failed");
-                                               [NSApp terminate:nil];
-                                               return;
-                                           }
-        
         g_window_info.app_active = true;
         g_window_info.pad_open = false;
         g_window_info.pad_width = 0;
@@ -241,10 +231,10 @@ std::string WindowSystem::GetKeyCodeName(uint32 key) {
 bool WindowSystem::InputConfigWindowHasFocus() { return false; }
 
 void WindowSystem::NotifyGameLoaded() {
-    dispatch_async(dispatch_get_main_queue(), ^{
+    auto applyGameLoadedUiState = ^{
         if (!g_main_window || !g_renderer_host_view)
             return;
-        
+
         if (!g_swiftui_toolbar)
             g_swiftui_toolbar = g_main_window.toolbar;
         [g_main_window setToolbar:nil];
@@ -275,9 +265,28 @@ void WindowSystem::NotifyGameLoaded() {
                          relativeTo:nil];
         
         UpdateMainWindowMetricsFromRendererHostView();
+
+        if (!g_renderer_canvas) {
+            std::string rendererError;
+            if (!InitializeRendererForMainView(
+                                               g_renderer_host_view,
+                                               (int)g_window_info.width.load(),
+                                               (int)g_window_info.height.load(),
+                                               rendererError)) {
+                WindowSystem::ShowErrorDialog(rendererError,
+                                              "Renderer initialization failed");
+                return;
+            }
+        }
+
         ResizeMainRendererIfNeeded();
         ApplyPadWindowRequestedState();
-    });
+    };
+
+    if ([NSThread isMainThread])
+        applyGameLoadedUiState();
+    else
+        dispatch_sync(dispatch_get_main_queue(), applyGameLoadedUiState);
 }
 
 void WindowSystem::NotifyGameExited() {
