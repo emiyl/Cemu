@@ -316,13 +316,31 @@ jobs:
         with:
           cmake-version: "3.29.0"
 
+      - name: "Bootstrap vcpkg"
+        run: |
+          bash ./dependencies/vcpkg/bootstrap-vcpkg.sh
+
+      - name: "Setup NuGet Credentials for vcpkg"
+        shell: "bash"
+        run: |
+          mono `./dependencies/vcpkg/vcpkg fetch nuget | tail -n 1` \
+          sources add \
+          -source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json" \
+          -storepasswordincleartext \
+          -name "GitHub" \
+          -username "${{ github.repository_owner }}" \
+          -password "${{ secrets.GITHUB_TOKEN }}"
+          mono `./dependencies/vcpkg/vcpkg fetch nuget | tail -n 1` \
+          setapikey "${{ secrets.GITHUB_TOKEN }}" \
+          -source "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
+
       - name: "Configure iOS build"
         run: |
           cmake -S . -B build-ios -G Xcode \
           -DCMAKE_SYSTEM_NAME=iOS \
           -DCMAKE_OSX_SYSROOT=iphonesimulator \
           -DENABLE_SWIFTUI_IOS=ON \
-          -DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: "Build iOS app"
         run: |
