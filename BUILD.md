@@ -127,6 +127,8 @@ This section refers to running `cmake -S...` (truncated).
    * Execute the folowing and then try running the command again:
       * `export VCPKG_FORCE_SYSTEM_BINARIES=1`
 * If you are getting a random error, read the [package-name-and-platform]-out.log and [package-name-and-platform]-err.log for the actual reason to see if you might be lacking the headers from a dependency.
+* Could not find a package configure file provided by "SDL2"
+   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
@@ -142,6 +144,8 @@ This section refers to running `cmake --build build`.
    *  You're either missing `libstdc++` or are using a version that's too old. Install at least v10 with your package manager, eg `sudo apt install libstdc++-10-dev`. See [#644](https://github.com/cemu-project/Cemu/issues/644).
 * `undefined libdecor_xx`
    * You are likely experiencing an issue with sdl2 package that comes with vcpkg. Delete sdl2 from vcpkg.json in source file and recompile.
+* Could not find a package configure file provided by "SDL2"
+   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
 
@@ -174,6 +178,29 @@ you have a recent enough version of Xcode. Xcode 15 is known to work.
 - If step 3 gives you an error about not being able to find ninja, try appending the following to the command and try again:
    - **On an Apple Silicon Mac:** `-DCMAKE_MAKE_PROGRAM=/opt/homebrew/bin/ninja`
    - **On an Intel Mac:** `-DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja`
+- Could not find a package configure file provided by "SDL2"
+   - Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
+
+## iOS
+
+The iOS build currently produces the SwiftUI app shell in [src/gui/swiftui](src/gui/swiftui) rather than the full desktop emulator runtime.
+
+To configure the app with Xcode, use:
+
+```bash
+cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+```
+
+Then build the `CemuSwiftUiIosApp` target from Xcode or with `cmake --build build-ios`.
+
+To run it in the iOS Simulator from the terminal:
+
+```bash
+open -a Simulator
+xcrun simctl boot "iPhone 17"
+xcrun simctl install booted build-ios/src/gui/swiftui/Debug-iphonesimulator/CemuSwiftUiIosApp.app
+xcrun simctl launch booted info.cemu.CemuSwiftUIiOS
+```
 
 ## FreeBSD
 
@@ -226,7 +253,7 @@ Example usage: `cmake -S . -B build -DCMAKE_BUILD_TYPE=release -DENABLE_SDL=ON -
 | ENABLE_SDL         |   | Enable SDLController controller API                                         | ON      | Currently required |
 | ENABLE_VCPKG       |   | Use VCPKG package manager to obtain dependencies                            | ON      |                    |
 | ENABLE_VULKAN      |   | Enable the Vulkan graphics backend                                          | ON      |                    |
-| ENABLE_WXWIDGETS   |   | Enable wxWidgets UI                                                         | ON      | Currently required |
+| ENABLE_WXWIDGETS   |   | Enable wxWidgets UI                                                         | OFF     |                    |
 
 ### Windows
 | Flag               | Description                       | Default | Note               |
@@ -244,6 +271,7 @@ Example usage: `cmake -S . -B build -DCMAKE_BUILD_TYPE=release -DENABLE_SDL=ON -
 | ENABLE_WAYLAND        | Enable Wayland support                             | ON      |
 
 ### macOS
-| Flag         | Description                                    | Default |
-|--------------|------------------------------------------------|---------|
-| MACOS_BUNDLE | MacOS executable will be an application bundle | OFF     |
+| Flag                | Description                                          | Default |
+|---------------------|------------------------------------------------------|---------|
+| ENABLE_SWIFTUI_MACOS | Enable experimental native macOS SwiftUI GUI backend | ON     |
+| MACOS_BUNDLE        | MacOS executable will be an application bundle       | OFF     |
