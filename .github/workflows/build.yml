@@ -73,7 +73,7 @@ jobs:
 
       - name: "cmake"
         run: |
-          cmake -S . -B build ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DCMAKE_C_COMPILER=/usr/bin/clang-15 -DCMAKE_CXX_COMPILER=/usr/bin/clang++-15 -G Ninja -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja -DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake -S . -B build ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DCMAKE_C_COMPILER=/usr/bin/clang-15 -DCMAKE_CXX_COMPILER=/usr/bin/clang++-15 -G Ninja -DCMAKE_MAKE_PROGRAM=/usr/bin/ninja
 
       - name: "Build Cemu"
         run: |
@@ -176,7 +176,7 @@ jobs:
           cd build
           echo "[INFO] BUILD_FLAGS: ${{ env.BUILD_FLAGS }}"
           echo "[INFO] BUILD_MODE: ${{ env.BUILD_MODE }}"
-          cmake .. ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DVCPKG_INSTALL_OPTIONS="--clean-after-build" -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake .. ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DVCPKG_INSTALL_OPTIONS="--clean-after-build"
 
       - name: "Build Cemu"
         run: |
@@ -271,8 +271,7 @@ jobs:
           -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
           -DMACOS_BUNDLE=ON \
           -DENABLE_SWIFTUI_MACOS=ON \
-          -G Ninja \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -G Ninja
 
       - name: "Build Cemu"
         run: |
@@ -305,6 +304,30 @@ jobs:
         with:
           submodules: "recursive"
 
+      - name: Setup release mode parameters
+        run: |
+          echo "BUILD_MODE=release" >> $GITHUB_ENV
+          echo "BUILD_FLAGS=" >> $GITHUB_ENV
+          echo "Build mode is release"
+
+      - name: Setup build flags for version
+        if: ${{ inputs.next_version_major != '' }}
+        run: |
+          echo "[INFO] Version ${{ inputs.next_version_major }}.${{ inputs.next_version_minor }}"
+          echo "BUILD_FLAGS=${{ env.BUILD_FLAGS }} -DEMULATOR_VERSION_MAJOR=${{ inputs.next_version_major }} -DEMULATOR_VERSION_MINOR=${{ inputs.next_version_minor }}" >> $GITHUB_ENV
+
+      - name: "Install system dependencies"
+        run: |
+          brew update
+          brew install nasm automake libtool ninja
+
+      - name: "Install molten-vk"
+        run: |
+          curl -L -O https://github.com/KhronosGroup/MoltenVK/releases/download/v1.4.1/MoltenVK-macos-privateapi.tar
+          tar xf MoltenVK-macos-privateapi.tar
+          sudo mkdir -p /usr/local/lib
+          sudo cp MoltenVK/MoltenVK/dynamic/dylib/macOS/libMoltenVK.dylib /usr/local/lib
+
       - name: "Setup cmake"
         uses: jwlawson/actions-setup-cmake@v2
         with:
@@ -330,11 +353,14 @@ jobs:
 
       - name: "Configure iOS build"
         run: |
-          cmake -S . -B build-ios -G Xcode \
+          mkdir build-ios
+          cd build-ios
+          cmake .. ${{ env.BUILD_FLAGS }} \
+          -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} \
           -DCMAKE_SYSTEM_NAME=iOS \
           -DCMAKE_OSX_SYSROOT=iphonesimulator \
-          -DENABLE_SWIFTUI_IOS=ON \
-          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DENABLE_SWIFTUI_MACOS=ON \
+          -G Xcode
 
       - name: "Build iOS app"
         run: |
