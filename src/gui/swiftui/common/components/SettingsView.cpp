@@ -1,4 +1,4 @@
-#include "gui/swiftui/components/SettingsView.h"
+#include "gui/swiftui/common/components/SettingsView.h"
 
 #include "Common/precompiled.h"
 #include "Cafe/Account/Account.h"
@@ -9,8 +9,8 @@
 #include "config/ActiveSettings.h"
 #include "config/CemuConfig.h"
 #include "config/NetworkSettings.h"
-#include "gui/swiftui/CemuApp.h"
-#include "gui/swiftui/SwiftUICemuConfig.h"
+#include "gui/swiftui/macos/CemuApp.h"
+#include "gui/swiftui/macos/SwiftUICemuConfig.h"
 
 #include <boost/nowide/convert.hpp>
 

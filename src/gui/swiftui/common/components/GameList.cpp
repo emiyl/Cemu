@@ -1,10 +1,10 @@
-#include "gui/swiftui/components/GameList.h"
+#include "gui/swiftui/common/components/GameList.h"
 
 #include "Cafe/Filesystem/fsc.h"
 #include "Cafe/TitleList/GameInfo.h"
 #include "Cafe/TitleList/TitleList.h"
 #include "Common/precompiled.h"
-#include "gui/swiftui/RegionStrings.h"
+#include "gui/swiftui/macos/RegionStrings.h"
 #include "config/CemuConfig.h"
 #include "interface/WindowSystem.h"
 #include "util/helpers/helpers.h"

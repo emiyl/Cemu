@@ -1,6 +1,6 @@
 #include "Common/precompiled.h"
 
-#include "gui/swiftui/MainWindow.h"
+#include "gui/swiftui/macos/MainWindow.h"
 
 #include "Cafe/CafeSystem.h"
 #include "Cafe/TitleList/TitleInfo.h"

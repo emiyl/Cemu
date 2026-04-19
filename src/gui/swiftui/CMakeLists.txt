@@ -2,23 +2,23 @@ enable_language(Swift)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
-    CemuIosApp.swift
-    ContentView.swift
-    components/GameList.swift
-    components/SettingsView.swift
-    components/settingsTabs/GeneralSettingsTab.swift
-    components/settingsTabs/GraphicsSettingsTab.swift
-    components/settingsTabs/AudioSettingsTab.swift
-    components/settingsTabs/OverlaySettingsTab.swift
-    components/settingsTabs/AccountSettingsTab.swift
-    components/settingsTabs/DebugSettingsTab.swift
-    LaunchScreen.storyboard
+    ios/CemuIosApp.swift
+    common/ContentView.swift
+    common/components/GameList.swift
+    common/components/SettingsView.swift
+    common/components/settingsTabs/GeneralSettingsTab.swift
+    common/components/settingsTabs/GraphicsSettingsTab.swift
+    common/components/settingsTabs/AudioSettingsTab.swift
+    common/components/settingsTabs/OverlaySettingsTab.swift
+    common/components/settingsTabs/AccountSettingsTab.swift
+    common/components/settingsTabs/DebugSettingsTab.swift
+    ios/LaunchScreen.storyboard
   )
 
   set_target_properties(CemuSwiftUiIosApp PROPERTIES
     Swift_LANGUAGE_VERSION 5
     MACOSX_BUNDLE TRUE
-    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info-iOS.plist.in"
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/ios/Info-iOS.plist.in"
     MACOSX_BUNDLE_GUI_IDENTIFIER "info.cemu.CemuSwiftUIiOS"
     XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "info.cemu.CemuSwiftUIiOS"
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
@@ -30,33 +30,35 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
 endif()
 
 add_library(CemuSwiftUiGui STATIC
-  CemuApp.cpp
-  CemuApp.h
-  MainWindow.cpp
-  MainWindow.h
-  canvas/RenderCanvas.h
-  canvas/MetalCanvas.mm
-  canvas/VulkanCanvas.mm
-  RegionStrings.cpp
-  RegionStrings.h
-  WindowSystemSwiftUI/WindowSystemSwiftUIInternal.h
-  WindowSystemSwiftUI/WindowSystemSwiftUIState.mm
-  WindowSystemSwiftUI/WindowSystemSwiftUIHelpers.mm
-  WindowSystemSwiftUI/WindowSystemSwiftUIDelegates.mm
-  WindowSystemSwiftUI.mm
-  ContentView.swift
-  components/GameList.swift
-  components/GameList.cpp
-  components/GameList.h
-  components/SettingsView.swift
-  components/settingsTabs/GeneralSettingsTab.swift
-  components/settingsTabs/GraphicsSettingsTab.swift
-  components/settingsTabs/AudioSettingsTab.swift
-  components/settingsTabs/OverlaySettingsTab.swift
-  components/settingsTabs/AccountSettingsTab.swift
-  components/settingsTabs/DebugSettingsTab.swift
-  components/SettingsView.cpp
-  components/SettingsView.h
+  macos/CemuApp.cpp
+  macos/CemuApp.h
+  macos/MainWindow.cpp
+  macos/MainWindow.h
+  macos/canvas/RenderCanvas.h
+  macos/canvas/MetalCanvas.mm
+  macos/canvas/VulkanCanvas.mm
+  macos/RegionStrings.cpp
+  macos/RegionStrings.h
+  macos/WindowSystemSwiftUI/WindowSystemSwiftUIInternal.h
+  macos/WindowSystemSwiftUI/WindowSystemSwiftUIState.mm
+  macos/WindowSystemSwiftUI/WindowSystemSwiftUIHelpers.mm
+  macos/WindowSystemSwiftUI/WindowSystemSwiftUIDelegates.mm
+  macos/WindowSystemSwiftUI.mm
+  macos/SwiftUICemuConfig.cpp
+  macos/SwiftUICemuConfig.h
+  common/ContentView.swift
+  common/components/GameList.swift
+  common/components/GameList.cpp
+  common/components/GameList.h
+  common/components/SettingsView.swift
+  common/components/settingsTabs/GeneralSettingsTab.swift
+  common/components/settingsTabs/GraphicsSettingsTab.swift
+  common/components/settingsTabs/AudioSettingsTab.swift
+  common/components/settingsTabs/OverlaySettingsTab.swift
+  common/components/settingsTabs/AccountSettingsTab.swift
+  common/components/settingsTabs/DebugSettingsTab.swift
+  common/components/SettingsView.cpp
+  common/components/SettingsView.h
 )
 
 set_target_properties(CemuSwiftUiGui PROPERTIES

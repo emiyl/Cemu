@@ -147,95 +147,97 @@ protocol SettingsBackend: AnyObject {
     func deleteAccount(_ persistentId: UInt32) -> Bool
 }
 
-final class CemuSettingsBackend: SettingsBackend {
-    func loadState() -> CemuSettingsState? {
-        var loaded = CemuSettingsState()
-        if CemuSettingsLoad(&loaded) {
-            return loaded
+#if !os(iOS)
+    final class CemuSettingsBackend: SettingsBackend {
+        func loadState() -> CemuSettingsState? {
+            var loaded = CemuSettingsState()
+            if CemuSettingsLoad(&loaded) {
+                return loaded
+            }
+            return nil
         }
-        return nil
-    }
 
-    func saveState(_ state: CemuSettingsState, mlcPath: String, gpuCaptureDir: String) {
-        var snapshot = state
-        _ = CemuSettingsSave(&snapshot)
-        mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
-        gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
-    }
-
-    func getMlcPath() -> String {
-        Self.consumeCString(CemuSettingsGetMlcPath())
-    }
-
-    func getDefaultMlcPath() -> String {
-        Self.consumeCString(CemuSettingsGetDefaultMlcPath())
-    }
-
-    func setMlcPath(_ path: String) -> Bool {
-        path.withCString { CemuSettingsSetMlcPath($0) }
-    }
-
-    func getGpuCaptureDir() -> String {
-        Self.consumeCString(CemuSettingsGetGpuCaptureDir())
-    }
-
-    func getDefaultGpuCaptureDir() -> String {
-        Self.consumeCString(CemuSettingsGetDefaultGpuCaptureDir())
-    }
-
-    func setGpuCaptureDir(_ path: String) -> Bool {
-        path.withCString { CemuSettingsSetGpuCaptureDir($0) }
-    }
-
-    func getGamePaths() -> [String] {
-        var paths: [String] = []
-        let count = CemuSettingsGetGamePathCount()
-        for i in 0..<count {
-            paths.append(Self.consumeCString(CemuSettingsGetGamePath(i)))
+        func saveState(_ state: CemuSettingsState, mlcPath: String, gpuCaptureDir: String) {
+            var snapshot = state
+            _ = CemuSettingsSave(&snapshot)
+            mlcPath.withCString { _ = CemuSettingsSetMlcPath($0) }
+            gpuCaptureDir.withCString { _ = CemuSettingsSetGpuCaptureDir($0) }
         }
-        return paths
-    }
 
-    func addGamePath(_ path: String) -> Bool {
-        path.withCString { CemuSettingsAddGamePath($0) }
-    }
-
-    func removeGamePath(at index: UInt64) -> Bool {
-        CemuSettingsRemoveGamePath(index)
-    }
-
-    func getAccounts() -> [AccountEntry] {
-        var values: [AccountEntry] = []
-        let count = CemuSettingsGetAccountCount()
-        for i in 0..<count {
-            let id = CemuSettingsGetAccountPersistentId(i)
-            let name = Self.consumeCString(CemuSettingsGetAccountDisplayName(i))
-            values.append(AccountEntry(persistentId: id, displayName: name))
+        func getMlcPath() -> String {
+            Self.consumeCString(CemuSettingsGetMlcPath())
         }
-        return values
-    }
 
-    func createAccount(name: String) -> UInt32? {
-        var createdId: UInt32 = 0
-        name.withCString {
-            _ = CemuSettingsCreateAccount($0, &createdId)
+        func getDefaultMlcPath() -> String {
+            Self.consumeCString(CemuSettingsGetDefaultMlcPath())
         }
-        return createdId == 0 ? nil : createdId
-    }
 
-    func deleteAccount(_ persistentId: UInt32) -> Bool {
-        CemuSettingsDeleteAccount(persistentId)
-    }
-
-    private static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
-        guard let ptr else {
-            return ""
+        func setMlcPath(_ path: String) -> Bool {
+            path.withCString { CemuSettingsSetMlcPath($0) }
         }
-        let string = String(cString: ptr)
-        CemuSettingsFreeBuffer(UnsafeMutableRawPointer(mutating: ptr))
-        return string
+
+        func getGpuCaptureDir() -> String {
+            Self.consumeCString(CemuSettingsGetGpuCaptureDir())
+        }
+
+        func getDefaultGpuCaptureDir() -> String {
+            Self.consumeCString(CemuSettingsGetDefaultGpuCaptureDir())
+        }
+
+        func setGpuCaptureDir(_ path: String) -> Bool {
+            path.withCString { CemuSettingsSetGpuCaptureDir($0) }
+        }
+
+        func getGamePaths() -> [String] {
+            var paths: [String] = []
+            let count = CemuSettingsGetGamePathCount()
+            for i in 0..<count {
+                paths.append(Self.consumeCString(CemuSettingsGetGamePath(i)))
+            }
+            return paths
+        }
+
+        func addGamePath(_ path: String) -> Bool {
+            path.withCString { CemuSettingsAddGamePath($0) }
+        }
+
+        func removeGamePath(at index: UInt64) -> Bool {
+            CemuSettingsRemoveGamePath(index)
+        }
+
+        func getAccounts() -> [AccountEntry] {
+            var values: [AccountEntry] = []
+            let count = CemuSettingsGetAccountCount()
+            for i in 0..<count {
+                let id = CemuSettingsGetAccountPersistentId(i)
+                let name = Self.consumeCString(CemuSettingsGetAccountDisplayName(i))
+                values.append(AccountEntry(persistentId: id, displayName: name))
+            }
+            return values
+        }
+
+        func createAccount(name: String) -> UInt32? {
+            var createdId: UInt32 = 0
+            name.withCString {
+                _ = CemuSettingsCreateAccount($0, &createdId)
+            }
+            return createdId == 0 ? nil : createdId
+        }
+
+        func deleteAccount(_ persistentId: UInt32) -> Bool {
+            CemuSettingsDeleteAccount(persistentId)
+        }
+
+        private static func consumeCString(_ ptr: UnsafePointer<CChar>?) -> String {
+            guard let ptr else {
+                return ""
+            }
+            let string = String(cString: ptr)
+            CemuSettingsFreeBuffer(UnsafeMutableRawPointer(mutating: ptr))
+            return string
+        }
     }
-}
+#endif
 
 final class MockSettingsBackend: SettingsBackend {
     private var state = CemuSettingsState()

@@ -1,4 +1,4 @@
-#include "gui/swiftui/CemuApp.h"
+#include "gui/swiftui/macos/CemuApp.h"
 #include "config/ActiveSettings.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Core/LatteOverlay.h"

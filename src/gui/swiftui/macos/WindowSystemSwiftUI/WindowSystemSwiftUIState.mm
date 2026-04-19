@@ -1,8 +1,8 @@
 #include "Common/precompiled.h"
 
-#include "gui/swiftui/CemuApp.h"
-#include "gui/swiftui/WindowSystemSwiftUI/WindowSystemSwiftUIInternal.h"
-#include "gui/swiftui/canvas/RenderCanvas.h"
+#include "gui/swiftui/macos/CemuApp.h"
+#include "gui/swiftui/macos/WindowSystemSwiftUI/WindowSystemSwiftUIInternal.h"
+#include "gui/swiftui/macos/canvas/RenderCanvas.h"
 
 namespace WindowSystemSwiftUIInternal {
 
