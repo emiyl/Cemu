@@ -180,7 +180,7 @@ jobs:
           cd build
           echo "[INFO] BUILD_FLAGS: ${{ env.BUILD_FLAGS }}"
           echo "[INFO] BUILD_MODE: ${{ env.BUILD_MODE }}"
-          cmake .. ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DVCPKG_INSTALL_OPTIONS="--clean-after-build" -DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          cmake .. ${{ env.BUILD_FLAGS }} -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} -DVCPKG_INSTALL_OPTIONS="--clean-after-build" -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: "Build Cemu"
         run: |
@@ -235,7 +235,7 @@ jobs:
       - name: "Install system dependencies"
         run: |
           brew update
-          brew install nasm automake libtool
+          brew install nasm automake libtool ninja
 
       - name: "Install molten-vk"
         run: |
@@ -277,7 +277,7 @@ jobs:
           -DMACOS_BUNDLE=ON \
           -DENABLE_SWIFTUI_MACOS=ON \
           -G Ninja \
-          -DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
+          -DCMAKE_TOOLCHAIN_FILE=${{ github.workspace }}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake
 
       - name: "Build Cemu"
         run: |
