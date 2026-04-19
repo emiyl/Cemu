@@ -270,7 +270,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} \
           -DCMAKE_OSX_ARCHITECTURES=${{ matrix.arch }} \
           -DMACOS_BUNDLE=ON \
-          -DENABLE_SWIFTUI_MACOS=ON \
+          -DENABLE_SWIFTUI=ON \
           -G Ninja
 
       - name: "Build Cemu"
@@ -359,7 +359,7 @@ jobs:
           -DCMAKE_BUILD_TYPE=${{ env.BUILD_MODE }} \
           -DCMAKE_SYSTEM_NAME=iOS \
           -DCMAKE_OSX_SYSROOT=iphonesimulator \
-          -DENABLE_SWIFTUI_MACOS=ON \
+          -DENABLE_SWIFTUI=ON \
           -G Xcode
 
       - name: "Build iOS app"

@@ -128,6 +128,21 @@ if (ENABLE_METAL AND NOT APPLE)
     message(FATAL_ERROR "Metal backend is only supported on Apple platforms")
 endif()
 
+if (APPLE)
+	set(ENABLE_SWIFTUI_DEFAULT ON)
+	set(ENABLE_WXWIDGETS_DEFAULT OFF)
+else()
+	set(ENABLE_SWIFTUI_DEFAULT OFF)
+	set(ENABLE_WXWIDGETS_DEFAULT ON)
+endif()
+
+option(ENABLE_SWIFTUI "Enable experimental native macOS SwiftUI GUI backend" ${ENABLE_SWIFTUI_DEFAULT})
+option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" ${ENABLE_WXWIDGETS_DEFAULT})
+
+if (ENABLE_SWIFTUI AND NOT APPLE)
+	message(FATAL_ERROR "SwiftUI macOS GUI backend is only supported on Apple platforms")
+endif()
+
 # input backends
 if (WIN32)
 	option(ENABLE_XINPUT "Enables the usage of XInput" ON)
@@ -144,9 +159,6 @@ if (WIN32)
 	option(ENABLE_XAUDIO "Enables the xaudio backend" ON)
 endif()
 option(ENABLE_CUBEB "Enabled cubeb backend" ON)
-
-option(ENABLE_SWIFTUI_MACOS "Enable experimental native macOS SwiftUI GUI backend" ON)
-option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" OFF)
 
 find_package(Threads REQUIRED)
 find_package(SDL2 REQUIRED)

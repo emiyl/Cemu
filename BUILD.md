@@ -283,8 +283,8 @@ Example usage: `cmake -S . -B build -DCMAKE_BUILD_TYPE=release -DENABLE_SDL=ON -
 | ENABLE_FERAL_GAMEMODE | Enable Feral Interactive GameMode support          | ON      |
 | ENABLE_WAYLAND        | Enable Wayland support                             | ON      |
 
-### macOS
+### macOS / iOS
 | Flag                | Description                                          | Default |
 |---------------------|------------------------------------------------------|---------|
-| ENABLE_SWIFTUI_MACOS | Enable experimental native macOS SwiftUI GUI backend | ON     |
+| ENABLE_SWIFTUI      | Enable experimental native SwiftUI GUI backend       | ON     |
 | MACOS_BUNDLE        | MacOS executable will be an application bundle       | OFF     |
