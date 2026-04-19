@@ -4,7 +4,7 @@ import SwiftUI
 struct CemuIosApp: App {
     var body: some Scene {
         WindowGroup {
-            ContentView(backend: MockBackend())
+            ContentView(backend: IOSBackends.gameList)
         }
     }
 }

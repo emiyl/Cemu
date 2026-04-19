@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(iOS)
+    import UniformTypeIdentifiers
+#endif
+
 #if os(macOS)
     import AppKit
 #elseif os(iOS)
@@ -64,7 +68,7 @@ import SwiftUI
     private func CemuSettingsDeleteAccount(_ persistentId: UInt32) -> Bool
 #endif
 
-struct CemuSettingsState: Equatable {
+struct CemuSettingsState: Codable, Equatable {
     var language: Int32 = 0
     var useDiscordPresence: Int32 = 0
     var saveScreenshots: Int32 = 0
@@ -530,9 +534,17 @@ final class SettingsStore: ObservableObject {
                 return
             }
             let path = url.path
-            _ = backend.addGamePath(path)
-            reloadGamePaths()
+            addGamePath(path)
         #endif
+    }
+
+    func addGamePath(_ path: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else {
+            return
+        }
+        _ = backend.addGamePath(trimmed)
+        reloadGamePaths()
     }
 
     func removeGamePath(at offsets: IndexSet) {
@@ -602,11 +614,14 @@ final class SettingsStore: ObservableObject {
 struct SettingsView: View {
     @StateObject var store: SettingsStore
     @Environment(\.dismiss) private var dismiss
+    #if os(iOS)
+        @State private var showGamePathImporter = false
+    #endif
 
     init(
         backend: SettingsBackend = {
             #if os(iOS)
-                MockSettingsBackend()
+                IOSBackends.settings
             #elseif os(macOS)
                 CemuSettingsBackend()
             #endif
@@ -699,7 +714,29 @@ struct SettingsView: View {
         .onChange(of: store.gpuCaptureDir) {
             store.scheduleAutosave()
         }
+        #if os(iOS)
+            .fileImporter(
+                isPresented: $showGamePathImporter,
+                allowedContentTypes: [.folder],
+                allowsMultipleSelection: false
+            ) { result in
+                guard case .success(let urls) = result, let url = urls.first else {
+                    return
+                }
+                let didAccess = url.startAccessingSecurityScopedResource()
+                if didAccess {
+                    defer { url.stopAccessingSecurityScopedResource() }
+                }
+                store.addGamePath(url.path)
+            }
+        #endif
     }
+
+    #if os(iOS)
+        func presentGamePathImporter() {
+            showGamePathImporter = true
+        }
+    #endif
 
     func sliderRow(_ title: String, value: Binding<Int32>, step: Double) -> some View {
         HStack {

@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 #if os(macOS)
@@ -43,6 +44,13 @@ extension SettingsView {
                             panel.allowsMultipleSelection = false
                             if panel.runModal() == .OK, let url = panel.url {
                                 store.gpuCaptureDir = url.path
+                            }
+                        #elseif os(iOS)
+                            if let documents = FileManager.default.urls(
+                                for: .documentDirectory,
+                                in: .userDomainMask
+                            ).first {
+                                store.gpuCaptureDir = documents.path
                             }
                         #endif
                     }

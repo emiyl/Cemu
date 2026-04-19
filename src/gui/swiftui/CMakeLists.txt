@@ -3,6 +3,7 @@ enable_language(Swift)
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
     ios/CemuIosApp.swift
+    ios/IosBackends.swift
     common/ContentView.swift
     common/GameList.swift
     common/SettingsView.swift

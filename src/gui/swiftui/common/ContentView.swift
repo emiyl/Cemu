@@ -44,7 +44,7 @@ struct ContentView: View {
                             }
                         }
                         .sheet(isPresented: $showSettings) {
-                            SettingsView(backend: MockSettingsBackend())
+                            SettingsView(backend: IOSBackends.settings)
                         }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)

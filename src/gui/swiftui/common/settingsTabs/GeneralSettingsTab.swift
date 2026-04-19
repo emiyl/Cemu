@@ -1,3 +1,4 @@
+import Foundation
 import SwiftUI
 
 #if os(macOS)
@@ -42,6 +43,13 @@ extension SettingsView {
                                 if panel.runModal() == .OK, let url = panel.url {
                                     store.mlcPath = url.path
                                 }
+                            #elseif os(iOS)
+                                if let documents = FileManager.default.urls(
+                                    for: .documentDirectory,
+                                    in: .userDomainMask
+                                ).first {
+                                    store.mlcPath = documents.path
+                                }
                             #endif
                         }
                         Button("Reset") {
@@ -81,7 +89,11 @@ extension SettingsView {
 
                 HStack {
                     Button("Add Path") {
-                        store.addGamePath()
+                        #if os(iOS)
+                            presentGamePathImporter()
+                        #else
+                            store.addGamePath()
+                        #endif
                     }
                     Button("Remove") {
                         store.removeSelectedGamePath()

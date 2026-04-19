@@ -245,6 +245,7 @@ struct GameItem: Identifiable {
 struct GameList: View {
     @State private var selectedTitleID: UInt64?
     @State private var showUpdatingBanner = false
+    @State private var launchErrorMessage: String?
     @State private var games: [GameItem] = []
     @State private var keyEventMonitor: Any?
     @State private var refreshRequestID = 0
@@ -316,6 +317,19 @@ struct GameList: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #if os(iOS)
             .background(Color(uiColor: .systemBackground))
+            .alert(
+                "Unavailable",
+                isPresented: Binding(
+                    get: { launchErrorMessage != nil },
+                    set: { if !$0 { launchErrorMessage = nil } }
+                ),
+                actions: {
+                    Button("OK", role: .cancel) {}
+                },
+                message: {
+                    Text(launchErrorMessage ?? "")
+                }
+            )
         #endif
     }
 
@@ -355,7 +369,11 @@ struct GameList: View {
     }
 
     private func launchGame(titleID: UInt64) {
-        _ = backend.launchTitleById(titleID)
+        if !backend.launchTitleById(titleID) {
+            #if os(iOS)
+                launchErrorMessage = "Title launch is not available on iOS yet."
+            #endif
+        }
     }
 
     private func launchSelectedGame() {
