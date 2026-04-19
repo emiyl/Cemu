@@ -1,7 +1,9 @@
 add_library(CemuGui INTERFACE)
 target_include_directories(CemuGui INTERFACE "interface")
 
-if(APPLE AND ENABLE_SWIFTUI_MACOS)
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    add_subdirectory(swiftui)
+elseif(APPLE AND ENABLE_SWIFTUI_MACOS)
     add_subdirectory(swiftui)
     target_link_libraries(CemuGui INTERFACE CemuSwiftUiGui)
 elseif(ENABLE_WXWIDGETS)

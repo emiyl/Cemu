@@ -1,5 +1,34 @@
 enable_language(Swift)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+  add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
+    CemuIosApp.swift
+    ContentView.swift
+    components/GameList.swift
+    components/SettingsView.swift
+    components/settingsTabs/GeneralSettingsTab.swift
+    components/settingsTabs/GraphicsSettingsTab.swift
+    components/settingsTabs/AudioSettingsTab.swift
+    components/settingsTabs/OverlaySettingsTab.swift
+    components/settingsTabs/AccountSettingsTab.swift
+    components/settingsTabs/DebugSettingsTab.swift
+    LaunchScreen.storyboard
+  )
+
+  set_target_properties(CemuSwiftUiIosApp PROPERTIES
+    Swift_LANGUAGE_VERSION 5
+    MACOSX_BUNDLE TRUE
+    MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/Info-iOS.plist.in"
+    MACOSX_BUNDLE_GUI_IDENTIFIER "info.cemu.CemuSwiftUIiOS"
+    XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "info.cemu.CemuSwiftUIiOS"
+    XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+    XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
+    XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+  )
+
+  return()
+endif()
+
 add_library(CemuSwiftUiGui STATIC
   CemuApp.cpp
   CemuApp.h

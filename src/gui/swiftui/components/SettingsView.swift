@@ -1,61 +1,68 @@
-import AppKit
 import SwiftUI
 
-@_silgen_name("CemuSettingsLoad")
-private func CemuSettingsLoad(_ outState: UnsafeMutablePointer<CemuSettingsState>) -> Bool
+#if os(macOS)
+    import AppKit
+#elseif os(iOS)
+    import UIKit
+#endif
 
-@_silgen_name("CemuSettingsSave")
-private func CemuSettingsSave(_ inState: UnsafePointer<CemuSettingsState>) -> Bool
+#if !os(iOS)
+    @_silgen_name("CemuSettingsLoad")
+    private func CemuSettingsLoad(_ outState: UnsafeMutablePointer<CemuSettingsState>) -> Bool
 
-@_silgen_name("CemuSettingsFreeBuffer")
-private func CemuSettingsFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
+    @_silgen_name("CemuSettingsSave")
+    private func CemuSettingsSave(_ inState: UnsafePointer<CemuSettingsState>) -> Bool
 
-@_silgen_name("CemuSettingsGetMlcPath")
-private func CemuSettingsGetMlcPath() -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsFreeBuffer")
+    private func CemuSettingsFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
 
-@_silgen_name("CemuSettingsGetDefaultMlcPath")
-private func CemuSettingsGetDefaultMlcPath() -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsGetMlcPath")
+    private func CemuSettingsGetMlcPath() -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsSetMlcPath")
-private func CemuSettingsSetMlcPath(_ path: UnsafePointer<CChar>?) -> Bool
+    @_silgen_name("CemuSettingsGetDefaultMlcPath")
+    private func CemuSettingsGetDefaultMlcPath() -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsGetGpuCaptureDir")
-private func CemuSettingsGetGpuCaptureDir() -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsSetMlcPath")
+    private func CemuSettingsSetMlcPath(_ path: UnsafePointer<CChar>?) -> Bool
 
-@_silgen_name("CemuSettingsGetDefaultGpuCaptureDir")
-private func CemuSettingsGetDefaultGpuCaptureDir() -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsGetGpuCaptureDir")
+    private func CemuSettingsGetGpuCaptureDir() -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsSetGpuCaptureDir")
-private func CemuSettingsSetGpuCaptureDir(_ path: UnsafePointer<CChar>?) -> Bool
+    @_silgen_name("CemuSettingsGetDefaultGpuCaptureDir")
+    private func CemuSettingsGetDefaultGpuCaptureDir() -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsGetGamePathCount")
-private func CemuSettingsGetGamePathCount() -> UInt64
+    @_silgen_name("CemuSettingsSetGpuCaptureDir")
+    private func CemuSettingsSetGpuCaptureDir(_ path: UnsafePointer<CChar>?) -> Bool
 
-@_silgen_name("CemuSettingsGetGamePath")
-private func CemuSettingsGetGamePath(_ index: UInt64) -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsGetGamePathCount")
+    private func CemuSettingsGetGamePathCount() -> UInt64
 
-@_silgen_name("CemuSettingsAddGamePath")
-private func CemuSettingsAddGamePath(_ path: UnsafePointer<CChar>?) -> Bool
+    @_silgen_name("CemuSettingsGetGamePath")
+    private func CemuSettingsGetGamePath(_ index: UInt64) -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsRemoveGamePath")
-private func CemuSettingsRemoveGamePath(_ index: UInt64) -> Bool
+    @_silgen_name("CemuSettingsAddGamePath")
+    private func CemuSettingsAddGamePath(_ path: UnsafePointer<CChar>?) -> Bool
 
-@_silgen_name("CemuSettingsGetAccountCount")
-private func CemuSettingsGetAccountCount() -> UInt64
+    @_silgen_name("CemuSettingsRemoveGamePath")
+    private func CemuSettingsRemoveGamePath(_ index: UInt64) -> Bool
 
-@_silgen_name("CemuSettingsGetAccountPersistentId")
-private func CemuSettingsGetAccountPersistentId(_ index: UInt64) -> UInt32
+    @_silgen_name("CemuSettingsGetAccountCount")
+    private func CemuSettingsGetAccountCount() -> UInt64
 
-@_silgen_name("CemuSettingsGetAccountDisplayName")
-private func CemuSettingsGetAccountDisplayName(_ index: UInt64) -> UnsafePointer<CChar>?
+    @_silgen_name("CemuSettingsGetAccountPersistentId")
+    private func CemuSettingsGetAccountPersistentId(_ index: UInt64) -> UInt32
 
-@_silgen_name("CemuSettingsCreateAccount")
-private func CemuSettingsCreateAccount(
-    _ miiName: UnsafePointer<CChar>?, _ outPersistentId: UnsafeMutablePointer<UInt32>?
-) -> Bool
+    @_silgen_name("CemuSettingsGetAccountDisplayName")
+    private func CemuSettingsGetAccountDisplayName(_ index: UInt64) -> UnsafePointer<CChar>?
 
-@_silgen_name("CemuSettingsDeleteAccount")
-private func CemuSettingsDeleteAccount(_ persistentId: UInt32) -> Bool
+    @_silgen_name("CemuSettingsCreateAccount")
+    private func CemuSettingsCreateAccount(
+        _ miiName: UnsafePointer<CChar>?, _ outPersistentId: UnsafeMutablePointer<UInt32>?
+    ) -> Bool
+
+    @_silgen_name("CemuSettingsDeleteAccount")
+    private func CemuSettingsDeleteAccount(_ persistentId: UInt32) -> Bool
+#endif
 
 struct CemuSettingsState: Equatable {
     var language: Int32 = 0
@@ -494,7 +501,9 @@ final class SettingsStore: ObservableObject {
     }
 
     func closeWindow() {
-        NSApp.keyWindow?.close()
+        #if os(macOS)
+            NSApp.keyWindow?.close()
+        #endif
     }
 
     func reloadGamePaths() {
@@ -506,20 +515,22 @@ final class SettingsStore: ObservableObject {
     }
 
     func addGamePath() {
-        let panel = NSOpenPanel()
-        panel.canChooseFiles = false
-        panel.canChooseDirectories = true
-        panel.allowsMultipleSelection = false
-        panel.canCreateDirectories = true
-        if panel.runModal() != .OK {
-            return
-        }
-        guard let url = panel.url else {
-            return
-        }
-        let path = url.path
-        _ = backend.addGamePath(path)
-        reloadGamePaths()
+        #if os(macOS)
+            let panel = NSOpenPanel()
+            panel.canChooseFiles = false
+            panel.canChooseDirectories = true
+            panel.allowsMultipleSelection = false
+            panel.canCreateDirectories = true
+            if panel.runModal() != .OK {
+                return
+            }
+            guard let url = panel.url else {
+                return
+            }
+            let path = url.path
+            _ = backend.addGamePath(path)
+            reloadGamePaths()
+        #endif
     }
 
     func removeGamePath(at offsets: IndexSet) {
@@ -588,8 +599,17 @@ final class SettingsStore: ObservableObject {
 
 struct SettingsView: View {
     @StateObject var store: SettingsStore
+    @Environment(\.dismiss) private var dismiss
 
-    init(backend: SettingsBackend = CemuSettingsBackend()) {
+    init(
+        backend: SettingsBackend = {
+            #if os(iOS)
+                MockSettingsBackend()
+            #elseif os(macOS)
+                CemuSettingsBackend()
+            #endif
+        }()
+    ) {
         _store = StateObject(wrappedValue: SettingsStore(backend: backend))
     }
 
@@ -606,8 +626,8 @@ struct SettingsView: View {
     }
 
     @ViewBuilder
-    var selectedTabView: some View {
-        switch store.selectedTab {
+    private func tabView(for tab: SettingsTab) -> some View {
+        switch tab {
         case .general: generalTab
         case .graphics: graphicsTab
         case .audio: audioTab
@@ -617,33 +637,64 @@ struct SettingsView: View {
         }
     }
 
+    var selectedTabView: some View {
+        tabView(for: store.selectedTab)
+    }
+
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationSplitView {
-                List(SettingsTab.allCases, selection: selectedTabBinding) { tab in
-                    Label(tab.title, systemImage: tab.symbolName)
-                        .tag(tab)
+        Group {
+            #if os(iOS)
+                NavigationStack {
+                    List {
+                        Section {
+                            ForEach(SettingsTab.allCases) { tab in
+                                NavigationLink {
+                                    tabView(for: tab)
+                                        .navigationTitle(tab.title)
+                                } label: {
+                                    Label(tab.title, systemImage: tab.symbolName)
+                                }
+                            }
+                        }
+                    }
+                    .listStyle(.insetGrouped)
+                    .navigationTitle("Settings")
+                    .toolbar {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button("Done") { dismiss() }
+                        }
+                    }
                 }
-                .listStyle(.sidebar)
-                .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
-            } detail: {
-                selectedTabView
-                    .padding(16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            }
-            .navigationSplitViewStyle(.balanced)
+            #else
+                VStack(spacing: 0) {
+                    NavigationSplitView {
+                        List(SettingsTab.allCases, selection: selectedTabBinding) { tab in
+                            Label(tab.title, systemImage: tab.symbolName)
+                                .tag(tab)
+                        }
+                        .listStyle(.sidebar)
+                        .navigationSplitViewColumnWidth(min: 220, ideal: 260, max: 320)
+                    } detail: {
+                        selectedTabView
+                            .padding(16)
+                            .frame(
+                                maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    }
+                    .navigationSplitViewStyle(.balanced)
+                }
+                .frame(minWidth: 860, minHeight: 620)
+            #endif
         }
-        .frame(minWidth: 860, minHeight: 620)
         .onAppear {
             store.load()
         }
-        .onChange(of: store.state) {
+        .onChange(of: store.state) { _ in
             store.scheduleAutosave()
         }
-        .onChange(of: store.mlcPath) {
+        .onChange(of: store.mlcPath) { _ in
             store.scheduleAutosave()
         }
-        .onChange(of: store.gpuCaptureDir) {
+        .onChange(of: store.gpuCaptureDir) { _ in
             store.scheduleAutosave()
         }
     }
@@ -673,15 +724,29 @@ struct SettingsView: View {
                 return Color(.sRGB, red: r, green: g, blue: b, opacity: a)
             },
             set: { color in
-                let nsColor = NSColor(color)
-                guard let converted = nsColor.usingColorSpace(.sRGB) else {
-                    return
-                }
-                let r = UInt32((converted.redComponent * 255).rounded())
-                let g = UInt32((converted.greenComponent * 255).rounded())
-                let b = UInt32((converted.blueComponent * 255).rounded())
-                let a = UInt32((converted.alphaComponent * 255).rounded())
-                value.wrappedValue = (r << 24) | (g << 16) | (b << 8) | a
+                #if os(macOS)
+                    let nsColor = NSColor(color)
+                    guard let converted = nsColor.usingColorSpace(.sRGB) else {
+                        return
+                    }
+                    let r = UInt32((converted.redComponent * 255).rounded())
+                    let g = UInt32((converted.greenComponent * 255).rounded())
+                    let b = UInt32((converted.blueComponent * 255).rounded())
+                    let a = UInt32((converted.alphaComponent * 255).rounded())
+                    value.wrappedValue = (r << 24) | (g << 16) | (b << 8) | a
+                #else
+                    let uiColor = UIColor(color)
+                    var r: CGFloat = 0
+                    var g: CGFloat = 0
+                    var b: CGFloat = 0
+                    var a: CGFloat = 0
+                    guard uiColor.getRed(&r, green: &g, blue: &b, alpha: &a) else { return }
+                    let red = UInt32((r * 255).rounded())
+                    let green = UInt32((g * 255).rounded())
+                    let blue = UInt32((b * 255).rounded())
+                    let alpha = UInt32((a * 255).rounded())
+                    value.wrappedValue = (red << 24) | (green << 16) | (blue << 8) | alpha
+                #endif
             }
         )
 
@@ -720,40 +785,42 @@ extension SettingsTab: Identifiable {
     }
 }
 
-private var settingsWindowController: NSWindowController?
+#if os(macOS)
+    private var settingsWindowController: NSWindowController?
 
-@_cdecl("CemuShowSettingsWindow")
-public func CemuShowSettingsWindow() {
-    DispatchQueue.main.async {
-        if let window = settingsWindowController?.window {
-            window.makeKeyAndOrderFront(nil)
+    @_cdecl("CemuShowSettingsWindow")
+    public func CemuShowSettingsWindow() {
+        DispatchQueue.main.async {
+            if let window = settingsWindowController?.window {
+                window.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+                return
+            }
+
+            let view = SettingsView()
+            let contentController = NSHostingController(rootView: view)
+
+            let window = NSWindow(
+                contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
+                styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
+                backing: .buffered,
+                defer: false
+            )
+            window.title = "Preferences"
+            window.titleVisibility = .hidden
+            window.titlebarAppearsTransparent = true
+            window.toolbarStyle = .unified
+            window.contentViewController = contentController
+            window.center()
+            window.isReleasedWhenClosed = false
+
+            let controller = NSWindowController(window: window)
+            settingsWindowController = controller
+            controller.showWindow(nil)
             NSApp.activate(ignoringOtherApps: true)
-            return
         }
-
-        let view = SettingsView()
-        let contentController = NSHostingController(rootView: view)
-
-        let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 900, height: 680),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
-            backing: .buffered,
-            defer: false
-        )
-        window.title = "Preferences"
-        window.titleVisibility = .hidden
-        window.titlebarAppearsTransparent = true
-        window.toolbarStyle = .unified
-        window.contentViewController = contentController
-        window.center()
-        window.isReleasedWhenClosed = false
-
-        let controller = NSWindowController(window: window)
-        settingsWindowController = controller
-        controller.showWindow(nil)
-        NSApp.activate(ignoringOtherApps: true)
     }
-}
+#endif
 
 #Preview {
     SettingsView(backend: MockSettingsBackend())

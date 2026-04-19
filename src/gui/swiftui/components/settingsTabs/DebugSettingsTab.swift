@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 extension SettingsView {
     var debugTab: some View {
         Form {
@@ -16,7 +20,7 @@ extension SettingsView {
                         "", value: $store.state.gdbPort, formatter: NumberFormatter()
                     )
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: store.state.gdbPort) {
+                    .onChange(of: store.state.gdbPort) { _ in
                         store.state.gdbPort = min(max(store.state.gdbPort, 1024), 65535)
                     }
                     .frame(minWidth: 50, maxWidth: 80)
@@ -25,20 +29,22 @@ extension SettingsView {
                     Text("GPU Capture Directory")
                     Text(
                         store.gpuCaptureDir.isEmpty
-                        ? store.defaultGpuCaptureDir : store.gpuCaptureDir
+                            ? store.defaultGpuCaptureDir : store.gpuCaptureDir
                     )
                     .lineLimit(1)
                     .truncationMode(.middle)
                     .foregroundStyle(.secondary)
                     Spacer()
                     Button("Select Folder") {
-                        let panel = NSOpenPanel()
-                        panel.canChooseFiles = false
-                        panel.canChooseDirectories = true
-                        panel.allowsMultipleSelection = false
-                        if panel.runModal() == .OK, let url = panel.url {
-                            store.gpuCaptureDir = url.path
-                        }
+                        #if os(macOS)
+                            let panel = NSOpenPanel()
+                            panel.canChooseFiles = false
+                            panel.canChooseDirectories = true
+                            panel.allowsMultipleSelection = false
+                            if panel.runModal() == .OK, let url = panel.url {
+                                store.gpuCaptureDir = url.path
+                            }
+                        #endif
                     }
                     Button("Clear") {
                         store.gpuCaptureDir = ""

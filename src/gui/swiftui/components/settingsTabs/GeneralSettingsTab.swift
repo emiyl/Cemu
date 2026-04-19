@@ -1,5 +1,9 @@
 import SwiftUI
 
+#if os(macOS)
+    import AppKit
+#endif
+
 extension SettingsView {
     var generalTab: some View {
         Form {
@@ -19,7 +23,7 @@ extension SettingsView {
                     "Receive untested updates",
                     isOn: boolBinding(\CemuSettingsState.receiveUntestedUpdates))
             }
-            
+
             Section {
                 HStack {
                     let displayPath = store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
@@ -30,13 +34,15 @@ extension SettingsView {
                     Spacer()
                     HStack {
                         Button("Select Folder") {
-                            let panel = NSOpenPanel()
-                            panel.canChooseFiles = false
-                            panel.canChooseDirectories = true
-                            panel.allowsMultipleSelection = false
-                            if panel.runModal() == .OK, let url = panel.url {
-                                store.mlcPath = url.path
-                            }
+                            #if os(macOS)
+                                let panel = NSOpenPanel()
+                                panel.canChooseFiles = false
+                                panel.canChooseDirectories = true
+                                panel.allowsMultipleSelection = false
+                                if panel.runModal() == .OK, let url = panel.url {
+                                    store.mlcPath = url.path
+                                }
+                            #endif
                         }
                         Button("Reset") {
                             store.mlcPath = ""
@@ -55,13 +61,15 @@ extension SettingsView {
             } footer: {
                 if false {
                     Button("Open Folder") {
-                        let displayPath =
-                        store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
-                        NSWorkspace.shared.open(URL(fileURLWithPath: displayPath))
+                        #if os(macOS)
+                            let displayPath =
+                                store.mlcPath.isEmpty ? store.defaultMlcPath : store.mlcPath
+                            NSWorkspace.shared.open(URL(fileURLWithPath: displayPath))
+                        #endif
                     }
                 }
             }
-            
+
             Section("Game Paths") {
                 List(selection: $store.selectedGamePath) {
                     ForEach(store.gamePaths, id: \.self) { path in
@@ -70,7 +78,7 @@ extension SettingsView {
                     }
                 }
                 .frame(height: CGFloat(max(store.gamePaths.count, 1)) * 26.0)
-                
+
                 HStack {
                     Button("Add Path") {
                         store.addGamePath()
