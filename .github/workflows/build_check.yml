@@ -1,5 +1,5 @@
 name: Build check
-on: 
+on:
   pull_request:
     paths-ignore:
       - "*.md"
@@ -12,6 +12,7 @@ on:
       - "*.md"
     branches:
       - main
+      - swiftui
 
 jobs:
   build:
