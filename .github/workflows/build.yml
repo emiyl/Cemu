@@ -35,7 +35,6 @@ jobs:
         with:
           submodules: "recursive"
           fetch-depth: 0
-          ref: swiftui
 
       - name: Setup release mode parameters
         run: |
@@ -105,8 +104,6 @@ jobs:
     steps:
       - name: Checkout Upstream Repo
         uses: actions/checkout@v6
-        with:
-          ref: swiftui
 
       - uses: actions/download-artifact@v8
         with:
@@ -137,7 +134,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: "recursive"
-          ref: swiftui
 
       - name: Setup release mode parameters
         run: |
@@ -218,7 +214,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: "recursive"
-          ref: swiftui
 
       - name: Setup release mode parameters
         run: |
@@ -309,7 +304,6 @@ jobs:
         uses: actions/checkout@v6
         with:
           submodules: "recursive"
-          ref: swiftui
 
       - name: "Setup cmake"
         uses: jwlawson/actions-setup-cmake@v2
