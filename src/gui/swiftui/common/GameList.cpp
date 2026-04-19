@@ -1,4 +1,4 @@
-#include "gui/swiftui/common/components/GameList.h"
+#include "gui/swiftui/common/GameList.h"
 
 #include "Cafe/Filesystem/fsc.h"
 #include "Cafe/TitleList/GameInfo.h"

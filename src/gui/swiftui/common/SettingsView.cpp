@@ -1,4 +1,4 @@
-#include "gui/swiftui/common/components/SettingsView.h"
+#include "gui/swiftui/common/SettingsView.h"
 
 #include "Common/precompiled.h"
 #include "Cafe/Account/Account.h"

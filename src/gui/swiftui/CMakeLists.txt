@@ -4,14 +4,14 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
     ios/CemuIosApp.swift
     common/ContentView.swift
-    common/components/GameList.swift
-    common/components/SettingsView.swift
-    common/components/settingsTabs/GeneralSettingsTab.swift
-    common/components/settingsTabs/GraphicsSettingsTab.swift
-    common/components/settingsTabs/AudioSettingsTab.swift
-    common/components/settingsTabs/OverlaySettingsTab.swift
-    common/components/settingsTabs/AccountSettingsTab.swift
-    common/components/settingsTabs/DebugSettingsTab.swift
+    common/GameList.swift
+    common/SettingsView.swift
+    common/settingsTabs/GeneralSettingsTab.swift
+    common/settingsTabs/GraphicsSettingsTab.swift
+    common/settingsTabs/AudioSettingsTab.swift
+    common/settingsTabs/OverlaySettingsTab.swift
+    common/settingsTabs/AccountSettingsTab.swift
+    common/settingsTabs/DebugSettingsTab.swift
     ios/LaunchScreen.storyboard
   )
 
@@ -47,18 +47,18 @@ add_library(CemuSwiftUiGui STATIC
   macos/SwiftUICemuConfig.cpp
   macos/SwiftUICemuConfig.h
   common/ContentView.swift
-  common/components/GameList.swift
-  common/components/GameList.cpp
-  common/components/GameList.h
-  common/components/SettingsView.swift
-  common/components/settingsTabs/GeneralSettingsTab.swift
-  common/components/settingsTabs/GraphicsSettingsTab.swift
-  common/components/settingsTabs/AudioSettingsTab.swift
-  common/components/settingsTabs/OverlaySettingsTab.swift
-  common/components/settingsTabs/AccountSettingsTab.swift
-  common/components/settingsTabs/DebugSettingsTab.swift
-  common/components/SettingsView.cpp
-  common/components/SettingsView.h
+  common/GameList.swift
+  common/GameList.cpp
+  common/GameList.h
+  common/SettingsView.swift
+  common/settingsTabs/GeneralSettingsTab.swift
+  common/settingsTabs/GraphicsSettingsTab.swift
+  common/settingsTabs/AudioSettingsTab.swift
+  common/settingsTabs/OverlaySettingsTab.swift
+  common/settingsTabs/AccountSettingsTab.swift
+  common/settingsTabs/DebugSettingsTab.swift
+  common/SettingsView.cpp
+  common/SettingsView.h
 )
 
 set_target_properties(CemuSwiftUiGui PROPERTIES
