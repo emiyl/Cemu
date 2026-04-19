@@ -4,7 +4,8 @@ import SwiftUI
 @objc(CemuSwiftUIRootViewController)
 final class CemuSwiftUIRootViewController: NSViewController {
     override func loadView() {
-        self.view = NSHostingView(rootView: ContentView())
+        let backend: GameListBackend = CemuBackend()
+        self.view = NSHostingView(rootView: ContentView(backend: backend))
     }
 }
 
@@ -15,8 +16,14 @@ public func CemuCreateSwiftUIRootViewController() -> UnsafeMutableRawPointer {
 }
 
 struct ContentView: View {
+    let backend: GameListBackend
+
     var body: some View {
-        GameList()
+        GameList(backend: backend)
             .frame(minWidth: 960, minHeight: 540)
     }
+}
+
+#Preview {
+    ContentView(backend: MockBackend())
 }

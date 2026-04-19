@@ -19,7 +19,7 @@ private enum GameListColumnIndex {
 private func makeGameListColumns(totalWidth: CGFloat) -> [GameListColumn] {
     let iconWidth: CGFloat = 48
     let contentWidth = max(0, totalWidth - iconWidth)
-    
+
     return [
         GameListColumn(title: "", width: iconWidth, alignment: .center),
         GameListColumn(title: "Name", width: contentWidth * 0.46, alignment: .leading),
@@ -56,7 +56,109 @@ private func CemuGameListFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
 @_silgen_name("CemuSwiftUILaunchTitleById")
 private func CemuSwiftUILaunchTitleById(_ titleId: UInt64) -> Bool
 
-private struct CemuGameListRow {
+protocol GameListBackend {
+    func create()
+    func destroy()
+    func refresh()
+    func count() -> UInt64
+    func isScanning() -> Bool
+    func row(index: UInt64, outRow: UnsafeMutablePointer<CemuGameListRow>) -> Bool
+    func freeBuffer(_ ptr: UnsafeMutableRawPointer?)
+    func launchTitleById(_ titleId: UInt64) -> Bool
+}
+
+final class CemuBackend: GameListBackend {
+    func create() {
+        CemuGameListCreate()
+    }
+
+    func destroy() {
+        CemuGameListDestroy()
+    }
+
+    func refresh() {
+        CemuGameListRefresh()
+    }
+
+    func count() -> UInt64 {
+        CemuGameListGetCount()
+    }
+
+    func isScanning() -> Bool {
+        CemuGameListIsScanning()
+    }
+
+    func row(index: UInt64, outRow: UnsafeMutablePointer<CemuGameListRow>) -> Bool {
+        CemuGameListGetRow(index, outRow)
+    }
+
+    func freeBuffer(_ ptr: UnsafeMutableRawPointer?) {
+        CemuGameListFreeBuffer(ptr)
+    }
+
+    func launchTitleById(_ titleId: UInt64) -> Bool {
+        CemuSwiftUILaunchTitleById(titleId)
+    }
+
+}
+
+final class MockBackend: GameListBackend {
+    func create() {}
+    func destroy() {}
+    func refresh() {}
+
+    func count() -> UInt64 {
+        3
+    }
+
+    func isScanning() -> Bool {
+        false
+    }
+
+    func row(index: UInt64, outRow: UnsafeMutablePointer<CemuGameListRow>) -> Bool {
+        struct Game {
+            var titleId: UInt64
+            var name: String
+            var region: String
+            var version: UInt16
+            var dlc: UInt16
+        }
+        let games = [
+            Game(
+                titleId: 0x0005_0000_101C_9400, name: "The Legend of Zelda: Breath of the Wild",
+                region: "EUR", version: 1, dlc: 2
+            ),
+            Game(
+                titleId: 0x0005_0000_101C_9401, name: "The Legend of Zelda: Breath of the Wild",
+                region: "USA", version: 1, dlc: 2
+            ),
+            Game(
+                titleId: 0x0005_0000_101C_9402, name: "The Legend of Zelda: Breath of the Wild",
+                region: "JPN", version: 1, dlc: 2
+            ),
+        ]
+
+        guard index < games.count else {
+            return false
+        }
+
+        let game = games[Int(index)]
+        outRow.pointee.titleId = game.titleId
+        outRow.pointee.name = strdup(game.name).map { UnsafePointer<CChar>($0) }
+        outRow.pointee.region = strdup(game.region).map { UnsafePointer<CChar>($0) }
+        outRow.pointee.version = game.version
+        outRow.pointee.dlc = game.dlc
+        return true
+    }
+
+    func freeBuffer(_ ptr: UnsafeMutableRawPointer?) {}
+
+    func launchTitleById(_ titleId: UInt64) -> Bool {
+        false
+    }
+}
+
+struct CemuGameListRow {
     var titleId: UInt64
     var iconData: UnsafePointer<UInt8>?
     var iconSize: UInt
@@ -73,7 +175,7 @@ struct GameItem: Identifiable {
     let version: UInt16
     let dlc: UInt16
     let region: String
-    
+
     var id: UInt64 { titleID }
 }
 
@@ -83,11 +185,12 @@ struct GameList: View {
     @State private var games: [GameItem] = []
     @State private var keyEventMonitor: Any?
     @State private var refreshRequestID = 0
-    
+    let backend: GameListBackend
+
     var body: some View {
         GeometryReader { proxy in
             let columns = makeGameListColumns(totalWidth: proxy.size.width)
-            
+
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     GameListHeaderView(columns: columns)
@@ -119,7 +222,7 @@ struct GameList: View {
                     }
                     .background(Color(nsColor: .controlBackgroundColor))
                 }
-                
+
                 if showUpdatingBanner {
                     GameListInfoBarView(message: "Updating game list...") {
                         withAnimation(.easeInOut(duration: 0.2)) {
@@ -140,65 +243,65 @@ struct GameList: View {
             }
         }
         .onAppear {
-            CemuGameListCreate()
+            backend.create()
             loadGamesFromProvider()
         }
         .onDisappear {
-            CemuGameListDestroy()
+            backend.destroy()
             refreshRequestID += 1
         }
     }
-    
+
     private func refreshGameList() {
         refreshRequestID += 1
         let currentRefreshRequestID = refreshRequestID
-        
+
         withAnimation(.easeInOut(duration: 0.2)) {
             showUpdatingBanner = true
         }
-        
-        CemuGameListRefresh()
+
+        backend.refresh()
         waitForRefreshCompletion(requestID: currentRefreshRequestID)
     }
-    
+
     private func waitForRefreshCompletion(requestID: Int) {
         guard requestID == refreshRequestID else {
             return
         }
-        
-        if !CemuGameListIsScanning() {
+
+        if !backend.isScanning() {
             loadGamesFromProvider {
                 guard requestID == refreshRequestID else {
                     return
                 }
-                
+
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showUpdatingBanner = false
                 }
             }
             return
         }
-        
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             waitForRefreshCompletion(requestID: requestID)
         }
     }
-    
+
     private func launchGame(titleID: UInt64) {
-        _ = CemuSwiftUILaunchTitleById(titleID)
+        _ = backend.launchTitleById(titleID)
     }
-    
+
     private func launchSelectedGame() {
         guard let selectedTitleID else {
             return
         }
         launchGame(titleID: selectedTitleID)
     }
-    
+
     private func loadGamesFromProvider(completion: (() -> Void)? = nil) {
         DispatchQueue.global(qos: .userInitiated).async {
             var newGames: [GameItem] = []
-            let count = CemuGameListGetCount()
+            let count = backend.count()
             for i in 0..<count {
                 var row = CemuGameListRow(
                     titleId: 0,
@@ -209,12 +312,12 @@ struct GameList: View {
                     version: 0,
                     dlc: 0
                 )
-                if CemuGameListGetRow(i, &row) {
+                if backend.row(index: i, outRow: &row) {
                     let iconPtr = row.iconData
                     let regionPtr = row.region
                     if let namePtr = row.name {
-                        defer { CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
-                        
+                        defer { backend.freeBuffer(UnsafeMutableRawPointer(mutating: namePtr)) }
+
                         let name = String(cString: namePtr)
                         let region = regionPtr.map { String(cString: $0) } ?? ""
                         var image: NSImage?
@@ -223,10 +326,10 @@ struct GameList: View {
                             image = NSImage(data: iconDataBuffer)
                         }
                         if let iconPtr {
-                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                            backend.freeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
                         }
                         if let regionPtr {
-                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                            backend.freeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
                         }
                         newGames.append(
                             GameItem(
@@ -239,15 +342,15 @@ struct GameList: View {
                             ))
                     } else {
                         if let iconPtr {
-                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
+                            backend.freeBuffer(UnsafeMutableRawPointer(mutating: iconPtr))
                         }
                         if let regionPtr {
-                            CemuGameListFreeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
+                            backend.freeBuffer(UnsafeMutableRawPointer(mutating: regionPtr))
                         }
                     }
                 }
             }
-            
+
             DispatchQueue.main.async {
                 self.games = newGames
                 completion?()
@@ -256,9 +359,13 @@ struct GameList: View {
     }
 }
 
+#Preview {
+    GameList(backend: MockBackend())
+}
+
 private struct GameListHeaderView: View {
     let columns: [GameListColumn]
-    
+
     var body: some View {
         HStack(spacing: 0) {
             ForEach(columns.indices, id: \.self) { index in
@@ -280,7 +387,7 @@ private struct GameListRowView: View {
     let columns: [GameListColumn]
     let isSelected: Bool
     let isAlternateRow: Bool
-    
+
     var body: some View {
         HStack(spacing: 0) {
             Group {
@@ -339,7 +446,7 @@ private struct GameListRowView: View {
         .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
         .background(backgroundColor)
     }
-    
+
     private var backgroundColor: Color {
         if isSelected {
             return Color(nsColor: .selectedContentBackgroundColor)
@@ -354,14 +461,14 @@ private struct GameListRowView: View {
 private struct GameListRowInteractionView: NSViewRepresentable {
     let onSelect: () -> Void
     let onLaunch: () -> Void
-    
+
     func makeNSView(context: Context) -> GameListRowInteractionNSView {
         let view = GameListRowInteractionNSView()
         view.onSelect = onSelect
         view.onLaunch = onLaunch
         return view
     }
-    
+
     func updateNSView(_ nsView: GameListRowInteractionNSView, context: Context) {
         nsView.onSelect = onSelect
         nsView.onLaunch = onLaunch
@@ -371,15 +478,15 @@ private struct GameListRowInteractionView: NSViewRepresentable {
 private final class GameListRowInteractionNSView: NSView {
     var onSelect: (() -> Void)?
     var onLaunch: (() -> Void)?
-    
+
     override var acceptsFirstResponder: Bool {
         true
     }
-    
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         self
     }
-    
+
     override func mouseDown(with event: NSEvent) {
         if event.clickCount >= 2 {
             onLaunch?()
@@ -387,7 +494,7 @@ private final class GameListRowInteractionNSView: NSView {
             onSelect?()
         }
     }
-    
+
     override func menu(for event: NSEvent) -> NSMenu? {
         let menu = NSMenu()
         let startItem = NSMenuItem(
@@ -396,7 +503,7 @@ private final class GameListRowInteractionNSView: NSView {
         menu.addItem(startItem)
         return menu
     }
-    
+
     @objc private func startAction(_ sender: Any?) {
         onSelect?()
         onLaunch?()
@@ -406,18 +513,18 @@ private final class GameListRowInteractionNSView: NSView {
 struct GameListInfoBarView: View {
     let message: String
     let onDismiss: () -> Void
-    
+
     var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "arrow.triangle.2.circlepath")
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(.secondary)
-            
+
             Text(message)
                 .font(.system(size: 12))
-            
+
             Spacer()
-            
+
             Button("Dismiss", action: onDismiss)
                 .buttonStyle(.plain)
                 .font(.system(size: 12, weight: .medium))
