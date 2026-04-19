@@ -127,6 +127,8 @@ This section refers to running `cmake -S...` (truncated).
    * Execute the folowing and then try running the command again:
       * `export VCPKG_FORCE_SYSTEM_BINARIES=1`
 * If you are getting a random error, read the [package-name-and-platform]-out.log and [package-name-and-platform]-err.log for the actual reason to see if you might be lacking the headers from a dependency.
+* Could not find a package configure file provided by "SDL2"
+   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
@@ -143,7 +145,7 @@ This section refers to running `cmake --build build`.
 * `undefined libdecor_xx`
    * You are likely experiencing an issue with sdl2 package that comes with vcpkg. Delete sdl2 from vcpkg.json in source file and recompile.
 * Could not find a package configure file provided by "SDL2"
-   *  Run with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
+   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
 
@@ -176,6 +178,8 @@ you have a recent enough version of Xcode. Xcode 15 is known to work.
 - If step 3 gives you an error about not being able to find ninja, try appending the following to the command and try again:
    - **On an Apple Silicon Mac:** `-DCMAKE_MAKE_PROGRAM=/opt/homebrew/bin/ninja`
    - **On an Intel Mac:** `-DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja`
+- Could not find a package configure file provided by "SDL2"
+   - Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 ## iOS
 
