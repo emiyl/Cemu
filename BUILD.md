@@ -142,6 +142,8 @@ This section refers to running `cmake --build build`.
    *  You're either missing `libstdc++` or are using a version that's too old. Install at least v10 with your package manager, eg `sudo apt install libstdc++-10-dev`. See [#644](https://github.com/cemu-project/Cemu/issues/644).
 * `undefined libdecor_xx`
    * You are likely experiencing an issue with sdl2 package that comes with vcpkg. Delete sdl2 from vcpkg.json in source file and recompile.
+* Could not find a package configure file provided by "SDL2"
+   *  Run with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
 
