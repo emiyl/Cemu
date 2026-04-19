@@ -688,13 +688,13 @@ struct SettingsView: View {
         .onAppear {
             store.load()
         }
-        .onChange(of: store.state) { _ in
+        .onChange(of: store.state) {
             store.scheduleAutosave()
         }
-        .onChange(of: store.mlcPath) { _ in
+        .onChange(of: store.mlcPath) {
             store.scheduleAutosave()
         }
-        .onChange(of: store.gpuCaptureDir) { _ in
+        .onChange(of: store.gpuCaptureDir) {
             store.scheduleAutosave()
         }
     }

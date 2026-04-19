@@ -20,8 +20,8 @@ extension SettingsView {
                         "", value: $store.state.gdbPort, formatter: NumberFormatter()
                     )
                     .textFieldStyle(.roundedBorder)
-                    .onChange(of: store.state.gdbPort) { _ in
-                        store.state.gdbPort = min(max(store.state.gdbPort, 1024), 65535)
+                    .onChange(of: store.state.gdbPort) { _, newValue in
+                        store.state.gdbPort = min(max(newValue, 1024), 65535)
                     }
                     .frame(minWidth: 50, maxWidth: 80)
                 }
