@@ -11,17 +11,6 @@ set(EMULATOR_VERSION_PATCH "0" CACHE STRING "")
 
 set(THREADS_PREFER_PTHREAD_FLAG true) # needs to be set before vcpkg
 
-project(Cemu VERSION 2.0.0)
-
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
-	set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
-	if(NOT CMAKE_OSX_SYSROOT)
-		set(CMAKE_OSX_SYSROOT "iphonesimulator")
-	endif()
-	add_subdirectory(src/gui)
-	return()
-endif()
-
 execute_process(
 		COMMAND git log --format=%h -1
 		WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR}
@@ -64,6 +53,17 @@ if (ENABLE_VCPKG)
 	if (WIN32)
 		set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "")
 	endif()
+endif()
+
+project(Cemu VERSION 2.0.0)
+
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
+	if(NOT CMAKE_OSX_SYSROOT)
+		set(CMAKE_OSX_SYSROOT "iphonesimulator")
+	endif()
+	add_subdirectory(src/gui)
+	return()
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")

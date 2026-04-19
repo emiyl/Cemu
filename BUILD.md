@@ -127,8 +127,6 @@ This section refers to running `cmake -S...` (truncated).
    * Execute the folowing and then try running the command again:
       * `export VCPKG_FORCE_SYSTEM_BINARIES=1`
 * If you are getting a random error, read the [package-name-and-platform]-out.log and [package-name-and-platform]-err.log for the actual reason to see if you might be lacking the headers from a dependency.
-* Could not find a package configure file provided by "SDL2"
-   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
@@ -144,8 +142,6 @@ This section refers to running `cmake --build build`.
    *  You're either missing `libstdc++` or are using a version that's too old. Install at least v10 with your package manager, eg `sudo apt install libstdc++-10-dev`. See [#644](https://github.com/cemu-project/Cemu/issues/644).
 * `undefined libdecor_xx`
    * You are likely experiencing an issue with sdl2 package that comes with vcpkg. Delete sdl2 from vcpkg.json in source file and recompile.
-* Could not find a package configure file provided by "SDL2"
-   *  Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 If you are getting a different error than any of the errors listed above, you may either open an issue in this repo or try using [GCC](#gcc). Make sure your standard library and compilers are updated since Cemu uses a lot of modern features!
 
@@ -197,8 +193,6 @@ Alternatively, you can use the non-privateapi version of MoltenVK, but you may e
 - If step 3 gives you an error about not being able to find ninja, try appending the following to the command and try again:
    - **On an Apple Silicon Mac:** `-DCMAKE_MAKE_PROGRAM=/opt/homebrew/bin/ninja`
    - **On an Intel Mac:** `-DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja`
-- Could not find a package configure file provided by "SDL2"
-   - Run `cmake -S ...` with `-DCMAKE_TOOLCHAIN_FILE=dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake`
 
 ## iOS
 
