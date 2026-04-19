@@ -22,7 +22,6 @@ bool MainWindow::RequestLaunchGame(const fs::path& launchPath, LaunchInitiatedBy
     
     WindowSystem::UpdateWindowTitles(false, true, 0.0);
     CafeSystem::LaunchForegroundTitle();
-    WindowSystem::NotifyGameLoaded();
     return true;
 }
 
