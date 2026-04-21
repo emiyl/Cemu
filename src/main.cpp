@@ -35,7 +35,7 @@
 #if BOOST_OS_LINUX
 #define _putenv(__s) putenv((char*)(__s))
 #include <sys/sysinfo.h>
-#elif BOOST_OS_MACOS || BOOST_OS_BSD
+#elif BOOST_OS_MACOS || BOOST_OS_BSD || BOOST_OS_IOS
 #define _putenv(__s) putenv((char*)(__s))
 #include <sys/types.h>
 #include <sys/sysctl.h>
