@@ -5,6 +5,8 @@
 #include "version.h"
 #include "platform.h"
 
+#include <TargetConditionals.h>
+
 #define FMT_HEADER_ONLY
 #define FMT_USE_GRISU 1
 #include <fmt/core.h>
@@ -182,7 +184,7 @@ inline sint16 _swapEndianS16(sint16 v)
 #else
 inline uint64 _swapEndianU64(uint64 v)
 {
-#if BOOST_OS_MACOS || BOOST_OS_IOS || defined(__APPLE__)
+#if BOOST_OS_MACOS || TARGET_OS_IOS || defined(__APPLE__)
     return OSSwapInt64(v);
 #elif BOOST_OS_BSD
 #ifdef __OpenBSD__
@@ -197,7 +199,7 @@ inline uint64 _swapEndianU64(uint64 v)
 
 inline uint32 _swapEndianU32(uint32 v)
 {
-#if BOOST_OS_MACOS || BOOST_OS_IOS || defined(__APPLE__)
+#if BOOST_OS_MACOS || TARGET_OS_IOS || defined(__APPLE__)
     return OSSwapInt32(v);
 #elif BOOST_OS_BSD
 #ifdef __OpenBSD__
@@ -212,7 +214,7 @@ inline uint32 _swapEndianU32(uint32 v)
 
 inline sint32 _swapEndianS32(sint32 v)
 {
-#if BOOST_OS_MACOS || BOOST_OS_IOS || defined(__APPLE__)
+#if BOOST_OS_MACOS || TARGET_OS_IOS || defined(__APPLE__)
     return (sint32)OSSwapInt32((uint32)v);
 #elif BOOST_OS_BSD
 #ifdef __OpenBSD__

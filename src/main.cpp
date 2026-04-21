@@ -1,4 +1,7 @@
+#include <TargetConditionals.h>
+#if !TARGET_OS_IOS
 #include "WindowSystem.h"
+#endif
 #include "util/crypto/aes128.h"
 #include "Cafe/OS/RPL/rpl.h"
 #include "Cafe/OS/libs/gx2/GX2.h"
@@ -37,7 +40,7 @@
 #if BOOST_OS_LINUX
 #define _putenv(__s) putenv((char*)(__s))
 #include <sys/sysinfo.h>
-#elif BOOST_OS_MACOS || BOOST_OS_BSD || BOOST_OS_IOS
+#elif BOOST_OS_MACOS || BOOST_OS_BSD || !TARGET_OS_IOS
 #define _putenv(__s) putenv((char*)(__s))
 #include <sys/types.h>
 #include <sys/sysctl.h>
@@ -269,6 +272,7 @@ int main(int argc, char* argv[])
 #else
 
 int BreathOfTheWildChildProcessMain();
+#if !TARGET_OS_IOS
 int main(int argc, char *argv[])
 {
 #if BOOST_OS_LINUX && defined(ENABLE_VULKAN)
@@ -284,6 +288,7 @@ int main(int argc, char *argv[])
 	WindowSystem::Create();
 	return 0;
 }
+#endif
 #endif
 
 extern "C" DLLEXPORT uint64 gameMeta_getTitleId()

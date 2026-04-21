@@ -1,5 +1,6 @@
 #pragma once
 
+#include <TargetConditionals.h>
 #include <boost/predef/os.h>
 #include <cstdint>
 
@@ -15,7 +16,7 @@
 #include <X11/extensions/Xrender.h>
 #include <X11/Xutil.h>
 #include "Common/unix/platform.h"
-#elif BOOST_OS_MACOS || BOOST_OS_IOS
+#elif BOOST_OS_MACOS || TARGET_OS_IOS
 #include <libkern/OSByteOrder.h>
 #include "Common/unix/platform.h"
 #endif

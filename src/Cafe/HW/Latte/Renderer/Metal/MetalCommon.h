@@ -1,5 +1,6 @@
 #pragma once
 
+#include <TargetConditionals.h>
 #include <Foundation/Foundation.hpp>
 #include <Metal/Metal.hpp>
 
@@ -107,7 +108,7 @@ inline bool FormatIsRenderable(Latte::E_GX2SURFFMT format)
 template <typename... T>
 inline bool executeCommand(fmt::format_string<T...> fmt, T&&... args) {
     std::string command = fmt::format(fmt, std::forward<T>(args)...);
-#if BOOST_OS_IOS
+#if TARGET_OS_IOS
     cemuLog_log(LogType::Force, "executeCommand is unavailable on iOS: {}", command);
     return false;
 #else

@@ -3,6 +3,8 @@
 #include "ConfigValue.h"
 #include "XMLConfig.h"
 
+#include <TargetConditionals.h>
+
 enum class NetworkService;
 
 struct GameEntry
@@ -196,7 +198,7 @@ enum class CrashDump
 	Full
 };
 ENABLE_ENUM_ITERATORS(CrashDump, CrashDump::Disabled, CrashDump::Full);
-#elif BOOST_OS_UNIX || BOOST_OS_IOS
+#elif BOOST_OS_UNIX || TARGET_OS_IOS
 enum class CrashDump
 {
 	Disabled,

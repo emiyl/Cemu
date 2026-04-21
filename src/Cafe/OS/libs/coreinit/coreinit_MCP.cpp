@@ -4,6 +4,7 @@
 #include "Cafe/OS/libs/coreinit/coreinit_IOS.h"
 #include "Cafe/OS/libs/coreinit/coreinit_MCP.h"
 
+#include <TargetConditionals.h>
 
 #include "Cafe/OS/libs/nn_common.h"
 #include "Cafe/OS/libs/nn_act/nn_act.h"
@@ -466,7 +467,7 @@ typedef struct
 
 static_assert(sizeof(UCParamStruct_t) == 0x54); // unsure
 
-#if BOOST_OS_LINUX || BOOST_OS_MACOS || BOOST_OS_BSD || BOOST_OS_IOS
+#if BOOST_OS_LINUX || BOOST_OS_MACOS || BOOST_OS_BSD || TARGET_OS_IOS
 #define _strcmpi strcasecmp
 #endif
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <TargetConditionals.h>
+
 void memory_init();
 void memory_mapForCurrentTitle();
 void memory_unmapForCurrentTitle();
@@ -180,7 +182,7 @@ bool memory_isAddressRangeAccessible(MPTR virtualAddress, uint32 size);
 #define CPU_swapEndianU64(_v) bswap_64((uint64)(_v))
 #define CPU_swapEndianU32(_v) bswap_32((uint32)(_v))
 #define CPU_swapEndianU16(_v) bswap_16((uint16)(_v))
-#elif BOOST_OS_MACOS || BOOST_OS_IOS || defined(__APPLE__)
+#elif BOOST_OS_MACOS || TARGET_OS_IOS || defined(__APPLE__)
 #define CPU_swapEndianU64(_v) OSSwapInt64((uint64)(_v))
 #define CPU_swapEndianU32(_v) OSSwapInt32((uint32)(_v))
 #define CPU_swapEndianU16(_v) OSSwapInt16((uint16)(_v))

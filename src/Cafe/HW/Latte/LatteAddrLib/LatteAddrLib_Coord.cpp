@@ -1,3 +1,4 @@
+#include <TargetConditionals.h>
 #include "Cafe/HW/Latte/Core/Latte.h"
 #include "Cafe/HW/Latte/LatteAddrLib/LatteAddrLib.h"
 #include "Cafe/OS/libs/gx2/GX2_Surface.h"
@@ -7,7 +8,7 @@ using namespace Latte;
 namespace LatteAddrLib
 {
 
-#if BOOST_OS_LINUX || BOOST_OS_MACOS || BOOST_OS_IOS || BOOST_OS_BSD
+#if BOOST_OS_LINUX || BOOST_OS_MACOS || !TARGET_OS_IOS || BOOST_OS_BSD
 	unsigned char _BitScanReverse(uint32* _Index, uint32 _Mask)
 	{
 		if (!_Mask)
