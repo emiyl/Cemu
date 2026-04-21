@@ -2,6 +2,7 @@ enable_language(Swift)
 
 if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
+    ../../main.cpp
     ios/CemuIosApp.swift
     ios/IosBackends.swift
     ios/LaunchBridge.cpp
@@ -15,6 +16,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     common/SettingsView.h
     macos/RegionStrings.cpp
     macos/RegionStrings.h
+    macos/CemuApp.cpp
+    macos/CemuApp.h
     macos/SwiftUICemuConfig.cpp
     macos/SwiftUICemuConfig.h
     common/settingsTabs/GeneralSettingsTab.swift
