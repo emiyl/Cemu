@@ -19,7 +19,11 @@ execute_process(
 )
 add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_HASH=${GIT_HASH}>)
 
-set(IS_IOS CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    set(IS_IOS ON)
+else()
+    set(IS_IOS OFF)
+endif()
 
 if (ENABLE_VCPKG)
 	# check if vcpkg is shallow and unshallow it if necessary
