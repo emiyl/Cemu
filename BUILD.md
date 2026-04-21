@@ -196,8 +196,6 @@ Alternatively, you can use the non-privateapi version of MoltenVK, but you may e
 
 ## iOS
 
-The iOS build currently produces the SwiftUI app shell in [src/gui/swiftui](src/gui/swiftui) rather than the full desktop emulator runtime.
-
 To configure the app with Xcode, use:
 
 ```bash
