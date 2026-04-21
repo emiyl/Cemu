@@ -7,12 +7,13 @@
 #include "config/NetworkSettings.h"
 #include "Cemu/ncrypto/ncrypto.h"
 
+#include <TargetConditionals.h>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
 #include <vector>
 
-#if BOOST_OS_MACOS
+#if BOOST_OS_MACOS || TARGET_OS_IOS
 #include <mach-o/dyld.h>
 #endif
 
@@ -70,6 +71,39 @@ void CemuApp::DeterminePaths(std::set<fs::path>& failedWriteAccess) // for MacOS
         data_path = isAppBundle ? (appPath / "Contents/Resources") : exePath.parent_path();
     }
     ActiveSettings::SetPaths(isPortable, exePath, user_data_path, config_path, cache_path, data_path, failedWriteAccess);
+}
+#endif
+
+#if TARGET_OS_IOS
+void CemuApp::DeterminePaths(std::set<fs::path>& failedWriteAccess) // for iOS
+{
+    std::error_code ec;
+    fs::path user_data_path, config_path, cache_path, data_path;
+
+    uint32_t exePathBufferSize = 0;
+    _NSGetExecutablePath(nullptr, &exePathBufferSize);
+    std::vector<char> exePathBuffer(exePathBufferSize, '\0');
+    if (_NSGetExecutablePath(exePathBuffer.data(), &exePathBufferSize) != 0)
+    {
+        fprintf(stderr, "Failed to resolve executable path\n");
+        exit(0);
+    }
+    fs::path exePath = fs::weakly_canonical(fs::path(exePathBuffer.data()), ec);
+    if (ec)
+        exePath = fs::path(exePathBuffer.data());
+
+    const char* homeEnv = std::getenv("HOME");
+    if (!homeEnv || !homeEnv[0])
+    {
+        fprintf(stderr, "HOME is not set\n");
+        exit(0);
+    }
+    const fs::path homePath(homeEnv);
+    user_data_path = config_path = homePath / "Library/Application Support/Cemu";
+    cache_path = homePath / "Library/Caches/Cemu";
+    data_path = exePath.parent_path();
+
+    ActiveSettings::SetPaths(false, exePath, user_data_path, config_path, cache_path, data_path, failedWriteAccess);
 }
 #endif
 
