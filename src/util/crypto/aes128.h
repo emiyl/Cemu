@@ -1,6 +1,8 @@
 #ifndef _AES_H_
 #define _AES_H_
 
+#include "Common/precompiled.h"
+
 void AES128_init();
 
 extern void(*AES128_ECB_encrypt)(uint8* input, const uint8* key, uint8* output);
