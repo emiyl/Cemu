@@ -80,24 +80,24 @@ if(NOT IS_IOS)
 	)
 
 	cemu_use_precompiled_header(CemuBin)
-endif()
 
-if(MSVC AND MSVC_VERSION EQUAL 1940)
-	# workaround for an msvc issue on VS 17.10 where generated ILK files are too large
-	# see https://developercommunity.visualstudio.com/t/After-updating-to-VS-1710-the-size-of-/10665511
-	set_target_properties(CemuBin PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
-endif()
+	if(MSVC AND MSVC_VERSION EQUAL 1940)
+		# workaround for an msvc issue on VS 17.10 where generated ILK files are too large
+		# see https://developercommunity.visualstudio.com/t/After-updating-to-VS-1710-the-size-of-/10665511
+		set_target_properties(CemuBin PROPERTIES LINK_FLAGS "/INCREMENTAL:NO")
+	endif()
 
-if(WIN32)
-	target_sources(CemuBin PRIVATE
-	resource/cemu.rc
-	../dist/windows/cemu.manifest
-	)
-endif()
+	if(WIN32)
+		target_sources(CemuBin PRIVATE
+		resource/cemu.rc
+		../dist/windows/cemu.manifest
+		)
+	endif()
 
-set_property(TARGET CemuBin PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-set_property(TARGET CemuBin PROPERTY WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
-set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
+	set_property(TARGET CemuBin PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+	set_property(TARGET CemuBin PROPERTY WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+	set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
+endif()
 
 if(MACOSX_BUNDLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 	set_target_properties(CemuBin PROPERTIES
