@@ -578,7 +578,9 @@ namespace CafeSystem
 		iosu::fpd::GetModule(),
 		iosu::pdm::GetModule(),
 		iosu::ccr_nfc::GetModule(),
+#ifdef ENABLE_CURL
 		iosu::boss::GetModule()
+#endif
 	};
 
 	// initialize all subsystems which are persistent and don't depend on a game running

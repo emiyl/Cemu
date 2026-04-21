@@ -201,12 +201,6 @@ add_library(CemuCafe
   IOSU/legacy/iosu_mcp.h
   IOSU/legacy/iosu_nim.cpp
   IOSU/legacy/iosu_nim.h
-  IOSU/nn/iosu_nn_service.cpp
-  IOSU/nn/iosu_nn_service.h
-  IOSU/nn/boss/boss_common.cpp
-  IOSU/nn/boss/boss_common.h
-  IOSU/nn/boss/boss_service.cpp
-  IOSU/nn/boss/boss_service.h
   IOSU/PDM/iosu_pdm.cpp
   IOSU/PDM/iosu_pdm.h
   IOSU/ODM/iosu_odm.cpp
@@ -354,9 +348,6 @@ add_library(CemuCafe
   OS/libs/nfc/TagV0.h
   OS/libs/nfc/TLV.cpp
   OS/libs/nfc/TLV.h
-  OS/libs/nlibcurl/nlibcurl.cpp
-  OS/libs/nlibcurl/nlibcurlDebug.hpp
-  OS/libs/nlibcurl/nlibcurl.h
   OS/libs/nlibnss/nlibnss.cpp
   OS/libs/nlibnss/nlibnss.h
   OS/libs/nn_ac/nn_ac.cpp
@@ -392,22 +383,6 @@ add_library(CemuCafe
   OS/libs/nn_nfp/nn_nfp.h
   OS/libs/nn_nim/nn_nim.cpp
   OS/libs/nn_nim/nn_nim.h
-  OS/libs/nn_olv/nn_olv.cpp
-  OS/libs/nn_olv/nn_olv.h
-  OS/libs/nn_olv/nn_olv_Common.cpp
-  OS/libs/nn_olv/nn_olv_Common.h
-  OS/libs/nn_olv/nn_olv_InitializeTypes.cpp
-  OS/libs/nn_olv/nn_olv_InitializeTypes.h
-  OS/libs/nn_olv/nn_olv_DownloadCommunityTypes.cpp
-  OS/libs/nn_olv/nn_olv_DownloadCommunityTypes.h
-  OS/libs/nn_olv/nn_olv_UploadCommunityTypes.cpp
-  OS/libs/nn_olv/nn_olv_UploadCommunityTypes.h
-  OS/libs/nn_olv/nn_olv_UploadFavoriteTypes.cpp
-  OS/libs/nn_olv/nn_olv_UploadFavoriteTypes.h
-  OS/libs/nn_olv/nn_olv_PostTypes.cpp
-  OS/libs/nn_olv/nn_olv_PostTypes.h
-  OS/libs/nn_olv/nn_olv_OfflineDB.cpp
-  OS/libs/nn_olv/nn_olv_OfflineDB.h
   OS/libs/nn_pdm/nn_pdm.cpp
   OS/libs/nn_pdm/nn_pdm.h
   OS/libs/nn_save/nn_save.cpp
@@ -489,6 +464,36 @@ add_library(CemuCafe
   TitleList/TitleList.cpp
   TitleList/TitleList.h
 )
+
+if (ENABLE_CURL)
+  target_sources(CemuCafe PRIVATE
+    IOSU/nn/iosu_nn_service.cpp
+    IOSU/nn/iosu_nn_service.h
+    IOSU/nn/boss/boss_common.cpp
+    IOSU/nn/boss/boss_common.h
+    IOSU/nn/boss/boss_service.cpp
+    IOSU/nn/boss/boss_service.h
+    OS/libs/nlibcurl/nlibcurl.cpp
+    OS/libs/nlibcurl/nlibcurlDebug.hpp
+    OS/libs/nlibcurl/nlibcurl.h
+    OS/libs/nn_olv/nn_olv.cpp
+    OS/libs/nn_olv/nn_olv.h
+    OS/libs/nn_olv/nn_olv_Common.cpp
+    OS/libs/nn_olv/nn_olv_Common.h
+    OS/libs/nn_olv/nn_olv_InitializeTypes.cpp
+    OS/libs/nn_olv/nn_olv_InitializeTypes.h
+    OS/libs/nn_olv/nn_olv_DownloadCommunityTypes.cpp
+    OS/libs/nn_olv/nn_olv_DownloadCommunityTypes.h
+    OS/libs/nn_olv/nn_olv_UploadCommunityTypes.cpp
+    OS/libs/nn_olv/nn_olv_UploadCommunityTypes.h
+    OS/libs/nn_olv/nn_olv_UploadFavoriteTypes.cpp
+    OS/libs/nn_olv/nn_olv_UploadFavoriteTypes.h
+    OS/libs/nn_olv/nn_olv_PostTypes.cpp
+    OS/libs/nn_olv/nn_olv_PostTypes.h
+    OS/libs/nn_olv/nn_olv_OfflineDB.cpp
+    OS/libs/nn_olv/nn_olv_OfflineDB.h
+  )
+endif()
 
 if (ENABLE_OPENGL)
   target_sources(CemuCafe PRIVATE

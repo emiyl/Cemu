@@ -6,14 +6,6 @@ add_library(CemuComponents
   Logging/CemuDebugLogging.h
   Logging/CemuLogging.cpp
   Logging/CemuLogging.h
-  napi/napi_act.cpp
-  napi/napi_ec.cpp
-  napi/napi.cpp
-  napi/napi.h
-  napi/napi_helper.cpp
-  napi/napi_helper.h
-  napi/napi_idbe.cpp
-  napi/napi_version.cpp
   ncrypto/ncrypto.cpp
   ncrypto/ncrypto.h
   nex/nex.cpp
@@ -30,6 +22,19 @@ add_library(CemuComponents
   Tools/DownloadManager/DownloadManager.cpp
   Tools/DownloadManager/DownloadManager.h
 )
+
+if (ENABLE_CURL)
+add_library(CemuComponents
+  napi/napi_act.cpp
+  napi/napi_ec.cpp
+  napi/napi.cpp
+  napi/napi.h
+  napi/napi_helper.cpp
+  napi/napi_helper.h
+  napi/napi_idbe.cpp
+  napi/napi_version.cpp
+)
+endif()
 
 if(ENABLE_DISCORD_RPC)
 target_sources(CemuComponents PRIVATE

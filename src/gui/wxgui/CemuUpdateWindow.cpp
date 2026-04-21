@@ -18,7 +18,9 @@
 #include <sys/stat.h>
 #endif
 
+#ifdef ENABLE_CURL
 #include <curl/curl.h>
+#endif
 #include <zip.h>
 #include <boost/tokenizer.hpp>
 

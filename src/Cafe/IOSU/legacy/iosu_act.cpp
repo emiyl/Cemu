@@ -137,6 +137,7 @@ bool iosuAct_isAccountDataLoaded()
 
 uint32 iosuAct_acquirePrincipalIdByAccountId(const char* nnid, uint32* pid)
 {
+#ifdef ENABLE_CURL
 	NAPI::AuthInfo authInfo;
 	NAPI::NAPI_MakeAuthInfoFromCurrentAccount(authInfo);
 	NAPI::ACTConvertNnidToPrincipalIdResult result = NAPI::ACT_ACTConvertNnidToPrincipalId(authInfo, nnid);
@@ -149,6 +150,7 @@ uint32 iosuAct_acquirePrincipalIdByAccountId(const char* nnid, uint32* pid)
 		*pid = 0;
 		return BUILD_NN_RESULT(NN_RESULT_LEVEL_STATUS, NN_RESULT_MODULE_NN_ACT, 0); // what error should we return? The friend list app expects nn_act.AcquirePrincipalIdByAccountId to never return an error
 	}
+#endif
 	return 0;
 }
 
@@ -551,6 +553,7 @@ namespace iosu
 			if (tokenLen != sizeof(NexToken))
 				return ACTResult_OutOfRange;
 
+#ifdef ENABLE_CURL
 			NAPI::AuthInfo authInfo;
 			NAPI::NAPI_MakeAuthInfoFromCurrentAccount(authInfo);
 			NAPI::ACTGetNexTokenResult nexTokenResult = NAPI::ACT_GetNexToken_WithCache(authInfo, titleId, titleVersion, serverId);
@@ -565,6 +568,7 @@ namespace iosu
 				cemu_assert_debug((returnCode&0x80000000) != 0);
 				return returnCode;
 			}
+#endif
 			return nnResultStatus(NN_RESULT_MODULE_NN_ACT, NN_ERROR_CODE::ACT_UNKNOWN_SERVER_ERROR);
 		}
 
@@ -581,6 +585,7 @@ namespace iosu
 			cemu_assert_debug(ActiveSettings::IsOnlineEnabled());
 			if (tokenLen < IndependentTokenMaxLength)
 				return ACTResult_OutOfRange;
+			#ifdef ENABLE_CURL
 			NAPI::AuthInfo authInfo;
 			NAPI::NAPI_MakeAuthInfoFromCurrentAccount(authInfo);
 			account.Release();
@@ -600,8 +605,12 @@ namespace iosu
 				returnCode = 0x80000000; // todo - proper error codes
 			}
 			return returnCode;
+			#else
+			return nnResultStatus(NN_RESULT_MODULE_NN_ACT, NN_ERROR_CODE::ACT_UNKNOWN_SERVER_ERROR);
+			#endif
 		}
 
+#ifdef ENABLE_CURL
 		class ActService : public iosu::nn::IPCService
 		{
 		public:
@@ -626,6 +635,15 @@ namespace iosu
 		{
 			gActService.Stop();
 		}
+#else
+		void Initialize()
+		{
+		}
+
+		void Stop()
+		{
+		}
+#endif
 	}
 }
 

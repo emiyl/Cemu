@@ -1,6 +1,8 @@
 #pragma once
 #include "napi.h"
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "pugixml.hpp"
 
 typedef void CURL;

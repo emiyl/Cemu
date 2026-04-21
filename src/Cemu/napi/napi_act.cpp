@@ -3,7 +3,9 @@
 #include "Cemu/ncrypto/ncrypto.h"
 #include "napi.h"
 #include "napi_helper.h"
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "config/ActiveSettings.h"
 #include "util/helpers/StringHelpers.h"
 #include "util/highresolutiontimer/HighResolutionTimer.h"

@@ -9,7 +9,9 @@
 
 #define CURL_STRICTER
 
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include <unordered_map>
 #include <atomic>
 

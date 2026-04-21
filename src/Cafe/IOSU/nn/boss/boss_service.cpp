@@ -13,7 +13,9 @@
 #include "boss_common.h"
 
 #include <pugixml.hpp>
+#ifdef ENABLE_CURL
 #include <curl/curl.h>
+#endif
 #include <openssl/x509.h>
 #include <openssl/evp.h>
 #include <openssl/hmac.h>

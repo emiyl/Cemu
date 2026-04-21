@@ -15,7 +15,9 @@
 
 #include <cinttypes>
 #include <charconv>
+#ifdef ENABLE_CURL
 #include <curl/curl.h>
+#endif
 #include <pugixml.hpp>
 
 #include "WindowSystem.h"
@@ -32,6 +34,7 @@ void DownloadManager::downloadTitleVersionList()
 	if (m_hasTitleVersionList)
 		return;
 	NAPI::AuthInfo authInfo = GetAuthInfo(false);
+#ifdef ENABLE_CURL
 	auto versionListVersionResult = NAPI::TAG_GetVersionListVersion(authInfo);
 	if (!versionListVersionResult.isValid)
 		return;
@@ -40,6 +43,7 @@ void DownloadManager::downloadTitleVersionList()
 		return;
 	m_titleVersionList = versionListResult.titleVersionList;
 	m_hasTitleVersionList = true;
+#endif
 }
 
 // grab latest version from TAG version list. Returns false if titleId is not found in the list
@@ -187,6 +191,7 @@ public:
 bool DownloadManager::_connect_refreshIASAccountIdAndDeviceToken()
 {
 	NAPI::AuthInfo authInfo = GetAuthInfo(false);
+#ifdef ENABLE_CURL
 	// query IAS/ECS account id and device token (if not cached)
 	auto rChallenge = NAPI::IAS_GetChallenge(authInfo);
 	if (rChallenge.apiError != NAPI_RESULT::SUCCESS)
@@ -205,24 +210,31 @@ bool DownloadManager::_connect_refreshIASAccountIdAndDeviceToken()
 		return false;
 	s_nupFileCache->AddFileAsync({ fmt::format("{}/token_info", m_authInfo.cachefileName) }, serializedData.data(), serializedData.size());
 	return true;
+#endif
 }
 
 bool DownloadManager::_connect_queryAccountStatusAndServiceURLs()
 {
-	NAPI::AuthInfo authInfo = GetAuthInfo(true);
-	NAPI::NAPI_ECSGetAccountStatus_Result accountStatusResult = NAPI::ECS_GetAccountStatus(authInfo);
-	if (accountStatusResult.apiError != NAPI_RESULT::SUCCESS)
-	{
-		cemuLog_log(LogType::Force, "ECS - Failed to query account status (error: {0} {1})", accountStatusResult.apiError, accountStatusResult.serviceError);
+#ifdef ENABLE_CURL
+	NAPI::AuthInfo authInfo = GetAuthInfo(false);
+	auto rChallenge = NAPI::IAS_GetChallenge(authInfo);
+	if (rChallenge.apiError != NAPI_RESULT::SUCCESS)
 		return false;
-	}
-	if (accountStatusResult.accountStatus == NAPI::NAPI_ECSGetAccountStatus_Result::AccountStatus::UNREGISTERED)
-	{
-		cemuLog_log(LogType::Force, fmt::format("ECS - Account is not registered"));
+	auto rRegistrationInfo = NAPI::IAS_GetRegistrationInfo_QueryInfo(authInfo, rChallenge.challenge);
+	if (rRegistrationInfo.apiError != NAPI_RESULT::SUCCESS)
 		return false;
-	}
-
+	m_iasToken.serviceAccountId = rRegistrationInfo.accountId;
+	m_iasToken.deviceToken = rRegistrationInfo.deviceToken;
+	// store to cache
+	StoredTokenInfo storedTokenInfo;
+	storedTokenInfo.accountId = rRegistrationInfo.accountId;
+	storedTokenInfo.deviceToken = rRegistrationInfo.deviceToken;
+	std::vector<uint8> serializedData;
+	if (!storedTokenInfo.serialize(serializedData))
+		return false;
+	s_nupFileCache->AddFileAsync({ fmt::format("{}/token_info", m_authInfo.cachefileName) }, serializedData.data(), serializedData.size());
 	return true;
+#endif
 }
 
 // constructor for ticket cache entry
@@ -1108,24 +1120,24 @@ void DownloadManager::asyncPackageDownloadContentFile(Package* package, uint16 i
 		DownloadManager* downloadMgr;
 		Package* package;
 		Package::ContentFile* contentFile;
-		std::vector<uint8> receiveBuffer;
+		std::vector<uint8> receive_buffer;
 		FileStream* fileOutput;
 
 		static bool writeCallback(void* userData, const void* ptr, size_t len, bool isLast)
 		{
 			CallbackInfo* callbackInfo = (CallbackInfo*)userData;
 			// append bytes to buffer
-			callbackInfo->receiveBuffer.insert(callbackInfo->receiveBuffer.end(), (const uint8*)ptr, (const uint8*)ptr + len);
+			callbackInfo->receive_buffer.insert(callbackInfo->receive_buffer.end(), (const uint8*)ptr, (const uint8*)ptr + len);
 			// flush cache to file if it exceeds 128KiB or if this is the final callback
-			if (callbackInfo->receiveBuffer.size() >= (128 * 1024) || (isLast && !callbackInfo->receiveBuffer.empty()))
+			if (callbackInfo->receive_buffer.size() >= (128 * 1024) || (isLast && !callbackInfo->receive_buffer.empty()))
 			{
-				size_t bytesWritten = callbackInfo->receiveBuffer.size();
-				if (callbackInfo->fileOutput->writeData(callbackInfo->receiveBuffer.data(), callbackInfo->receiveBuffer.size()) != (uint32)callbackInfo->receiveBuffer.size())
+				size_t bytesWritten = callbackInfo->receive_buffer.size();
+				if (callbackInfo->fileOutput->writeData(callbackInfo->receive_buffer.data(), callbackInfo->receive_buffer.size()) != (uint32)callbackInfo->receive_buffer.size())
 				{
 					callbackInfo->downloadMgr->setPackageError(callbackInfo->package, _tr("Cannot write file. Disk full?"));
 					return false;
 				}
-				callbackInfo->receiveBuffer.clear();
+				callbackInfo->receive_buffer.clear();
 				if (bytesWritten > 0)
 				{
 					callbackInfo->downloadMgr->m_mutex.lock();
@@ -1283,11 +1295,11 @@ bool DownloadManager::asyncPackageInstallRecursiveExtractFiles(Package* package,
 					return false;
 				}
 				uint32 fileSize = fstVolume->GetFileSize(itr);
-				uint32 currentPos = 0;
-				while (currentPos < fileSize)
+				uint32 current_pos = 0;
+				while (current_pos < fileSize)
 				{
-					uint32 numBytesToTransfer = std::min(fileSize - currentPos, (uint32)buffer.size());
-					if (fstVolume->ReadFile(itr, currentPos, numBytesToTransfer, buffer.data()) != numBytesToTransfer)
+					uint32 numBytesToTransfer = std::min(fileSize - current_pos, (uint32)buffer.size());
+					if (fstVolume->ReadFile(itr, current_pos, numBytesToTransfer, buffer.data()) != numBytesToTransfer)
 					{
 						setPackageError(package, "Failed to extract data");
 						return false;
@@ -1297,7 +1309,7 @@ bool DownloadManager::asyncPackageInstallRecursiveExtractFiles(Package* package,
 						setPackageError(package, "Failed to write to file. Disk full?");
 						return false;
 					}
-					currentPos += numBytesToTransfer;
+					current_pos += numBytesToTransfer;
 				}
 				delete fileOut;
 			}
@@ -1440,11 +1452,13 @@ void DownloadManager::prepareIDBE(uint64 titleId)
 	if (s_nupFileCache->GetFile({ fmt::format("idbe/{0:016x}", titleId) }, idbeFile) && idbeFile.size() == sizeof(NAPI::IDBEIconDataV0))
 		return addToCache(titleId, (NAPI::IDBEIconDataV0*)(idbeFile.data()));
 	// not cached, query from server
+#ifdef ENABLE_CURL
 	std::optional<NAPI::IDBEIconDataV0> iconData = NAPI::IDBE_Request(GetDownloadMgrNetworkService(), titleId);
 	if (!iconData)
 		return;
 	s_nupFileCache->AddFileAsync({ fmt::format("idbe/{0:016x}", titleId) }, (uint8*)&(*iconData), sizeof(NAPI::IDBEIconDataV0));
 	addToCache(titleId, &*iconData);
+#endif
 }
 
 std::string DownloadManager::getNameFromCachedIDBE(uint64 titleId)

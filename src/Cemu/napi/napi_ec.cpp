@@ -2,7 +2,9 @@
 #include "napi.h"
 #include "napi_helper.h"
 
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "Cafe/IOSU/legacy/iosu_crypto.h"
 
 #include "Cemu/ncrypto/ncrypto.h"
@@ -180,6 +182,7 @@ namespace NAPI
 
 	/* IAS */
 
+#ifdef ENABLE_CURL
 	NAPI_IASGetChallenge_Result IAS_GetChallenge(AuthInfo& authInfo)
 	{
 		NAPI_IASGetChallenge_Result result{};
@@ -205,6 +208,7 @@ namespace NAPI
 		result.challenge = responseNode.child_value("Challenge");
 		return result;
 	}
+#endif
 
 	NAPI_IASGetRegistrationInfo_Result IAS_GetRegistrationInfo_QueryInfo(AuthInfo& authInfo, std::string challenge)
 	{
@@ -306,6 +310,7 @@ namespace NAPI
 		return wtString;
 	}
 
+#ifdef ENABLE_CURL
 	NAPI_ECSGetAccountStatus_Result ECS_GetAccountStatus(AuthInfo& authInfo)
 	{
 		NAPI_ECSGetAccountStatus_Result result{};
@@ -391,6 +396,7 @@ namespace NAPI
 			cachedServiceUrls.s_serviceURL_EcsURL = result.serviceURLs.EcsURL;
 		return result;
 	}
+#endif
 
 	NAPI_ECSAccountListETicketIds_Result ECS_AccountListETicketIds(AuthInfo& authInfo)
 	{
