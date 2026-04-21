@@ -199,12 +199,12 @@ Alternatively, you can use the non-privateapi version of MoltenVK, but you may e
 To configure the app with Xcode, use:
 
 ```bash
-cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS
 ```
 
 Then build the `CemuSwiftUiIosApp` target from Xcode or with `cmake --build build-ios`.
 
-To run it in the iOS Simulator from the terminal:
+To run it in the iOS Simulator from the terminal, configure CMake with `-DCMAKE_OSX_SYSROOT=iphonesimulator` and then use the following commands:
 
 ```bash
 open -a Simulator
