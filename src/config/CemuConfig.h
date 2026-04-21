@@ -195,7 +195,7 @@ enum class CrashDump
 	Full
 };
 ENABLE_ENUM_ITERATORS(CrashDump, CrashDump::Disabled, CrashDump::Full);
-#elif BOOST_OS_UNIX
+#elif BOOST_OS_UNIX || BOOST_OS_IOS
 enum class CrashDump
 {
 	Disabled,

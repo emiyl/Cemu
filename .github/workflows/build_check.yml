@@ -1,5 +1,5 @@
 name: Build check
-on: 
+on:
   pull_request:
     paths-ignore:
       - "*.md"
