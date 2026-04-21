@@ -11,7 +11,9 @@
 
 #include "util/helpers/Singleton.h"
 
+#if HAS_SDL
 #include "input/api/SDL/SDLControllerProvider.h"
+#endif
 #include "input/api/Keyboard/KeyboardControllerProvider.h"
 #include "input/api/DSU/DSUControllerProvider.h"
 #include "input/api/GameCube/GameCubeControllerProvider.h"

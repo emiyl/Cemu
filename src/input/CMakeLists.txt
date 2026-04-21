@@ -15,10 +15,6 @@ add_library(CemuInput
 	api/DSU/DSUControllerProvider.h
 	api/DSU/DSUMessages.h
 	api/DSU/DSUMessages.cpp
-	api/SDL/SDLController.cpp
-	api/SDL/SDLControllerProvider.cpp
-	api/SDL/SDLController.h
-	api/SDL/SDLControllerProvider.h
 	api/Keyboard/KeyboardControllerProvider.h
 	api/Keyboard/KeyboardControllerProvider.cpp
 	api/Keyboard/KeyboardController.cpp
@@ -40,6 +36,15 @@ add_library(CemuInput
 set_property(TARGET CemuInput PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 
 cemu_use_precompiled_header(CemuInput)
+
+if (ENABLE_SDL)
+	target_sources(CemuInput PRIVATE
+		api/SDL/SDLController.cpp
+		api/SDL/SDLControllerProvider.cpp
+		api/SDL/SDLController.h
+		api/SDL/SDLControllerProvider.h
+	)
+endif()
 
 if (ENABLE_LIBUSB)
 	target_sources(CemuInput PRIVATE
