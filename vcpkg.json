@@ -50,7 +50,8 @@
       "default-features": false,
       "features": [
         "openssl"
-      ]
+      ],
+      "platform": "!ios"
     },
     {
       "name": "dbus",

@@ -651,13 +651,16 @@ target_link_libraries(CemuCafe PRIVATE
   imguiImpl
   pugixml::pugixml
   ZLIB::ZLIB
-  CURL::libcurl
   ih264d
   zstd::zstd
   ${glslang_target}
   PUBLIC
   OpenSSL::SSL
 )
+
+if (ENABLE_CURL)
+  target_link_libraries(CemuCafe PRIVATE CURL::libcurl)
+endif()
 
 if (ENABLE_WAYLAND)
 	# PUBLIC because wayland-client.h is included in VulkanAPI.h

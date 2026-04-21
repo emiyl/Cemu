@@ -19,6 +19,8 @@ execute_process(
 )
 add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_HASH=${GIT_HASH}>)
 
+set(IS_IOS CMAKE_SYSTEM_NAME STREQUAL "iOS")
+
 if (ENABLE_VCPKG)
 	# check if vcpkg is shallow and unshallow it if necessary
 	execute_process(
@@ -45,7 +47,7 @@ if (ENABLE_VCPKG)
 	else()
 		set(VCPKG_OVERLAY_PORTS "${CMAKE_CURRENT_LIST_DIR}/dependencies/vcpkg_overlay_ports_win;${CMAKE_CURRENT_LIST_DIR}/dependencies/vcpkg_overlay_ports")
 	endif()
-	if(CMAKE_SYSTEM_NAME STREQUAL "iOS" AND CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
+	if(IS_IOS AND CMAKE_OSX_SYSROOT MATCHES "iphonesimulator")
 		set(VCPKG_TARGET_TRIPLET "arm64-ios-simulator" CACHE STRING "" FORCE)
 	endif()
 	set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/dependencies/vcpkg/scripts/buildsystems/vcpkg.cmake"
@@ -65,16 +67,18 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+if(IS_IOS)
 	set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
 	if(NOT CMAKE_OSX_SYSROOT)
 		set(CMAKE_OSX_SYSROOT "iphonesimulator")
 	endif()
+	set(CMAKE_OSX_ARCHITECTURES "arm64" CACHE STRING "" FORCE)
 	set(ENABLE_OPENGL OFF CACHE BOOL "Enables the OpenGL backend" FORCE)
 	set(ENABLE_HIDAPI OFF CACHE BOOL "Build with HIDAPI" FORCE)
 	set(ENABLE_CUBEB OFF CACHE BOOL "Build with CUBEB support" FORCE)
 	set(ENABLE_VULKAN OFF CACHE BOOL "Enables the Vulkan backend" FORCE)
 	set(ENABLE_LIBUSB OFF CACHE BOOL "Build with libusb support" FORCE)
+	set(ENABLE_CURL OFF CACHE BOOL "Build with CURL support" FORCE)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
@@ -165,11 +169,18 @@ endif()
 option(ENABLE_HIDAPI "Build with HIDAPI" ON)
 option(ENABLE_SDL "Enables the SDLController backend" ON)
 option(ENABLE_LIBUSB "Build with libusb support" ON)
+option(ENABLE_CURL "Build with CURL support" ON)
 
 if (ENABLE_LIBUSB)
 	add_compile_definitions(HAS_LIBUSB=1)
 else()
 	add_compile_definitions(HAS_LIBUSB=0)
+endif()
+
+if (ENABLE_CURL)
+	add_compile_definitions(HAS_CURL=1)
+else()
+	add_compile_definitions(HAS_CURL=0)
 endif()
 
 # audio backends
@@ -181,7 +192,9 @@ option(ENABLE_CUBEB "Enabled cubeb backend" ON)
 
 find_package(Threads REQUIRED)
 find_package(SDL2 REQUIRED)
-find_package(CURL REQUIRED)
+if (ENABLE_CURL)
+	find_package(CURL REQUIRED)
+endif()
 find_package(pugixml REQUIRED)
 find_package(RapidJSON REQUIRED)
 find_package(Boost COMPONENTS program_options filesystem nowide REQUIRED)
