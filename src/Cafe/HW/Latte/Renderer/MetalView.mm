@@ -6,6 +6,20 @@
 
 +(Class) layerClass { return [CAMetalLayer class]; }
 
+#if TARGET_OS_IOS
+
+-(instancetype) initWithFrame:(CGRect)frame
+{
+	self = [super initWithFrame:frame];
+	if (self)
+	{
+		self.contentScaleFactor = UIScreen.mainScreen.scale;
+	}
+	return self;
+}
+
+#else
+
 // copied from https://github.com/KhronosGroup/MoltenVK/blob/master/Demos/Cube/macOS/DemoViewController.m
 
 -(CALayer*) makeBackingLayer
@@ -23,4 +37,6 @@
 	layer.contentsScale = newScale;
 	return YES;
 }
+
+#endif
 @end

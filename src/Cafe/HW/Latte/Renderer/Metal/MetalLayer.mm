@@ -4,6 +4,19 @@
 
 void* CreateMetalLayer(void* handle, float& scaleX, float& scaleY)
 {
+	#if TARGET_OS_IOS
+	UIView* view = (UIView*)handle;
+
+	MetalView* childView = [[MetalView alloc] initWithFrame:view.bounds];
+	childView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+
+	[view addSubview:childView];
+
+	scaleX = childView.contentScaleFactor;
+	scaleY = childView.contentScaleFactor;
+
+	return childView.layer;
+	#else
 	NSView* view = (NSView*)handle;
 
 	MetalView* childView = [[MetalView alloc] initWithFrame:view.bounds];
@@ -19,4 +32,5 @@ void* CreateMetalLayer(void* handle, float& scaleX, float& scaleY)
     scaleY = (float)(pixels.size.height / points.size.height);
 
 	return childView.layer;
+	#endif
 }
