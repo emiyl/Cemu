@@ -140,7 +140,11 @@ extern "C" bool CemuSettingsLoad(CemuSettingsState* outState)
     outState->forceMeshShaders = 0;
     outState->supportsMetal = 0;
 #endif
+#ifdef ENABLE_VULKAN
     outState->supportsVulkan = ToInt32(g_vulkan_available);
+#else
+    outState->supportsVulkan = 0;
+#endif
     outState->overrideGamma = ToInt32(config.overrideAppGammaPreference);
     outState->overrideGammaValue = config.overrideGammaValue;
     outState->displayGammaValue = config.userDisplayGamma;
