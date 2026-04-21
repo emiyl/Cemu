@@ -194,6 +194,27 @@ Alternatively, you can use the non-privateapi version of MoltenVK, but you may e
    - **On an Apple Silicon Mac:** `-DCMAKE_MAKE_PROGRAM=/opt/homebrew/bin/ninja`
    - **On an Intel Mac:** `-DCMAKE_MAKE_PROGRAM=/usr/local/bin/ninja`
 
+## iOS
+
+The iOS build currently produces the SwiftUI app shell in [src/gui/swiftui](src/gui/swiftui) rather than the full desktop emulator runtime.
+
+To configure the app with Xcode, use:
+
+```bash
+cmake -S . -B build-ios -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphonesimulator
+```
+
+Then build the `CemuSwiftUiIosApp` target from Xcode or with `cmake --build build-ios`.
+
+To run it in the iOS Simulator from the terminal:
+
+```bash
+open -a Simulator
+xcrun simctl boot "iPhone 17"
+xcrun simctl install booted build-ios/src/gui/swiftui/Debug-iphonesimulator/CemuSwiftUiIosApp.app
+xcrun simctl launch booted info.cemu.CemuSwiftUIiOS
+```
+
 ## FreeBSD
 
 The following instructions to build Cemu on FreeBSD are experimental. Some features available on other platforms are not available on FreeBSD (discord rich presence, bluetooth/support for actual Wii U controllers, auto-updates, etc.)
@@ -246,6 +267,7 @@ Example usage: `cmake -S . -B build -DCMAKE_BUILD_TYPE=release -DENABLE_SDL=ON -
 | ENABLE_VCPKG       |   | Use VCPKG package manager to obtain dependencies                            | ON      |                    |
 | ENABLE_VULKAN      |   | Enable the Vulkan graphics backend                                          | ON      |                    |
 | ENABLE_WXWIDGETS   |   | Enable wxWidgets UI                                                         | ON      | Currently required |
+| ENABLE_LIBUSB      |   | Enable libusb                                                               | ON      |                    |
 
 ### Windows
 | Flag               | Description                       | Default | Note               |
@@ -262,7 +284,8 @@ Example usage: `cmake -S . -B build -DCMAKE_BUILD_TYPE=release -DENABLE_SDL=ON -
 | ENABLE_FERAL_GAMEMODE | Enable Feral Interactive GameMode support          | ON      |
 | ENABLE_WAYLAND        | Enable Wayland support                             | ON      |
 
-### macOS
-| Flag         | Description                                    | Default |
-|--------------|------------------------------------------------|---------|
-| MACOS_BUNDLE | MacOS executable will be an application bundle | OFF     |
+### macOS / iOS
+| Flag                | Description                                          | Default |
+|---------------------|------------------------------------------------------|---------|
+| ENABLE_SWIFTUI      | Enable experimental native SwiftUI GUI backend       | ON     |
+| MACOS_BUNDLE        | MacOS executable will be an application bundle       | OFF     |

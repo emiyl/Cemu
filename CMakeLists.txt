@@ -17,7 +17,7 @@ execute_process(
 		OUTPUT_VARIABLE GIT_HASH
 		OUTPUT_STRIP_TRAILING_WHITESPACE
 )
-add_definitions(-DEMULATOR_HASH=${GIT_HASH})
+add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_HASH=${GIT_HASH}>)
 
 if (ENABLE_VCPKG)
 	# check if vcpkg is shallow and unshallow it if necessary
@@ -57,6 +57,15 @@ endif()
 
 project(Cemu VERSION 2.0.0)
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
+	if(NOT CMAKE_OSX_SYSROOT)
+		set(CMAKE_OSX_SYSROOT "iphonesimulator")
+	endif()
+	add_subdirectory(src/gui)
+	return()
+endif()
+
 list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 
 set(CMAKE_CXX_STANDARD 20)
@@ -66,9 +75,9 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 add_compile_definitions($<$<CONFIG:Debug>:CEMU_DEBUG_ASSERT>) # if build type is debug, set CEMU_DEBUG_ASSERT
 
-add_definitions(-DEMULATOR_VERSION_MAJOR=${EMULATOR_VERSION_MAJOR})
-add_definitions(-DEMULATOR_VERSION_MINOR=${EMULATOR_VERSION_MINOR})
-add_definitions(-DEMULATOR_VERSION_PATCH=${EMULATOR_VERSION_PATCH})
+add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_VERSION_MAJOR=${EMULATOR_VERSION_MAJOR}>)
+add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_VERSION_MINOR=${EMULATOR_VERSION_MINOR}>)
+add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:EMULATOR_VERSION_PATCH=${EMULATOR_VERSION_PATCH}>)
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -99,7 +108,7 @@ endif()
 
 if (APPLE)
     enable_language(OBJC OBJCXX)
-    set(CMAKE_OSX_DEPLOYMENT_TARGET "13.4")
+    set(CMAKE_OSX_DEPLOYMENT_TARGET "26.0")
 endif()
 
 if (UNIX AND NOT APPLE)
@@ -123,6 +132,21 @@ if (ENABLE_METAL AND NOT APPLE)
     message(FATAL_ERROR "Metal backend is only supported on Apple platforms")
 endif()
 
+if (APPLE)
+	set(ENABLE_SWIFTUI_DEFAULT ON)
+	set(ENABLE_WXWIDGETS_DEFAULT OFF)
+else()
+	set(ENABLE_SWIFTUI_DEFAULT OFF)
+	set(ENABLE_WXWIDGETS_DEFAULT ON)
+endif()
+
+option(ENABLE_SWIFTUI "Enable experimental native macOS SwiftUI GUI backend" ${ENABLE_SWIFTUI_DEFAULT})
+option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" ${ENABLE_WXWIDGETS_DEFAULT})
+
+if (ENABLE_SWIFTUI AND NOT APPLE)
+	message(FATAL_ERROR "SwiftUI macOS GUI backend is only supported on Apple platforms")
+endif()
+
 # input backends
 if (WIN32)
 	option(ENABLE_XINPUT "Enables the usage of XInput" ON)
@@ -132,6 +156,13 @@ endif()
 
 option(ENABLE_HIDAPI "Build with HIDAPI" ON)
 option(ENABLE_SDL "Enables the SDLController backend" ON)
+option(ENABLE_LIBUSB "Build with libusb support" ON)
+
+if (ENABLE_LIBUSB)
+	add_compile_definitions(HAS_LIBUSB=1)
+else()
+	add_compile_definitions(HAS_LIBUSB=0)
+endif()
 
 # audio backends
 if (WIN32)
@@ -139,8 +170,6 @@ if (WIN32)
 	option(ENABLE_XAUDIO "Enables the xaudio backend" ON)
 endif()
 option(ENABLE_CUBEB "Enabled cubeb backend" ON)
-
-option(ENABLE_WXWIDGETS "Build with wxWidgets UI (Currently required)" ON)
 
 find_package(Threads REQUIRED)
 find_package(SDL2 REQUIRED)
@@ -198,7 +227,7 @@ endif()
 if (ENABLE_METAL)
     include_directories(${CMAKE_SOURCE_DIR}/dependencies/metal-cpp)
 
-    add_definitions(-DENABLE_METAL=1)
+	add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:ENABLE_METAL=1>)
 endif()
 
 if (ENABLE_DISCORD_RPC)
@@ -236,7 +265,7 @@ if (ENABLE_CUBEB)
 		set_property(TARGET cubeb PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 		add_library(cubeb::cubeb ALIAS cubeb)
 	endif()
-	add_compile_definitions("HAS_CUBEB=1")
+	add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:HAS_CUBEB=1>)
 endif()
 
 add_subdirectory("dependencies/ih264d" EXCLUDE_FROM_ALL)

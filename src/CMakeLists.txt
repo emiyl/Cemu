@@ -32,7 +32,13 @@ elseif(UNIX)
 		add_compile_options(-Wno-ambiguous-reversed-operator)
 	endif()
 
-    add_compile_options(-Wno-multichar -Wno-invalid-offsetof -Wno-switch -Wno-ignored-attributes -Wno-deprecated-enum-enum-conversion)
+	add_compile_options(
+		$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wno-multichar>
+		$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wno-invalid-offsetof>
+		$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wno-switch>
+		$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wno-ignored-attributes>
+		$<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:-Wno-deprecated-enum-enum-conversion>
+	)
 endif()
 
 add_compile_definitions(VK_NO_PROTOTYPES)
@@ -119,10 +125,12 @@ if (MACOS_BUNDLE)
 			COMMAND ${CMAKE_COMMAND} ARGS -E copy_directory "${CMAKE_SOURCE_DIR}/bin/${folder}" "$<TARGET_BUNDLE_DIR:CemuBin>/Contents/SharedSupport/${folder}")
 	endforeach(folder)
 
-	if(CMAKE_BUILD_TYPE STREQUAL "Debug")
-	    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/libusb-1.0.0.dylib")
-	else()
-	    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/libusb-1.0.0.dylib")
+	if (ENABLE_LIBUSB)
+		if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+		    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/libusb-1.0.0.dylib")
+		else()
+		    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/libusb-1.0.0.dylib")
+		endif()
 	endif()
 
 	if (EXISTS "/usr/local/lib/libMoltenVK.dylib")
@@ -142,9 +150,11 @@ if (MACOS_BUNDLE)
 		COMMAND ${CMAKE_COMMAND} -E copy 
 			"${MOLTENVK_PATH}"
 			"${FRAMEWORKS_DIR}/libMoltenVK.dylib"
+    if (ENABLE_LIBUSB)
 		COMMAND ${CMAKE_COMMAND} -E copy
 			"${LIBUSB_PATH}"
 			"${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
+    endif()
 		COMMAND ${CMAKE_COMMAND} -E copy
 			"${UPDATE_SH_PATH}"
 			"${RESOURCES_DIR}/update.sh"
@@ -157,12 +167,16 @@ if (MACOS_BUNDLE)
 		INSTALL_RPATH "@executable_path/../Frameworks"
 	)
 
-	add_custom_command(TARGET CemuBin POST_BUILD
-		COMMAND install_name_tool
-			-change @rpath/libusb-1.0.0.dylib
-					@executable_path/../Frameworks/libusb-1.0.0.dylib
-					"$<TARGET_FILE:CemuBin>"
-	)
+	if (ENABLE_LIBUSB)
+	  add_custom_command(TARGET CemuBin POST_BUILD
+		  COMMAND install_name_tool
+			  -change @rpath/libusb-1.0.0.dylib
+				  	@executable_path/../Frameworks/libusb-1.0.0.dylib
+					  "$<TARGET_FILE:CemuBin>"
+	  )
+  )
+	endif()
+  
 else()
     if(APPLE)
         find_library(MOLTENVK_LIBRARY
