@@ -9,8 +9,11 @@
 #include "config/ActiveSettings.h"
 #include "config/CemuConfig.h"
 #include "config/NetworkSettings.h"
-#include "gui/swiftui/macos/CemuApp.h"
 #include "gui/swiftui/macos/SwiftUICemuConfig.h"
+
+#if BOOST_OS_MACOS
+#include "gui/swiftui/macos/CemuApp.h"
+#endif
 
 #include <boost/nowide/convert.hpp>
 
@@ -274,8 +277,16 @@ extern "C" const char* CemuSettingsGetMlcPath(void)
 extern "C" bool CemuSettingsSetMlcPath(const char* path)
 {
     const std::string mlcPath = SafeStringFromBuffer(path);
+#if BOOST_OS_MACOS
     if (!mlcPath.empty() && !CemuApp::CheckMLCPath(_utf8ToPath(mlcPath)) && !CemuApp::CreateDefaultMLCFiles(_utf8ToPath(mlcPath)))
         return false;
+#else
+    if (!mlcPath.empty())
+    {
+        std::error_code ec;
+        fs::create_directories(_utf8ToPath(mlcPath), ec);
+    }
+#endif
     GetConfig().mlc_path = mlcPath;
     GetConfigHandle().Save();
     return true;

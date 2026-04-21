@@ -89,67 +89,65 @@ private func makeGameListColumns(totalWidth: CGFloat) -> [GameListColumn] {
     ]
 }
 
-#if !os(iOS)
-    @_silgen_name("CemuGameListCreate")
-    private func CemuGameListCreate()
+@_silgen_name("CemuGameListCreate")
+private func CemuGameListCreate()
 
-    @_silgen_name("CemuGameListDestroy")
-    private func CemuGameListDestroy()
+@_silgen_name("CemuGameListDestroy")
+private func CemuGameListDestroy()
 
-    @_silgen_name("CemuGameListRefresh")
-    private func CemuGameListRefresh()
+@_silgen_name("CemuGameListRefresh")
+private func CemuGameListRefresh()
 
-    @_silgen_name("CemuGameListIsScanning")
-    private func CemuGameListIsScanning() -> Bool
+@_silgen_name("CemuGameListIsScanning")
+private func CemuGameListIsScanning() -> Bool
 
-    @_silgen_name("CemuGameListGetCount")
-    private func CemuGameListGetCount() -> UInt64
+@_silgen_name("CemuGameListGetCount")
+private func CemuGameListGetCount() -> UInt64
 
-    @_silgen_name("CemuGameListGetRow")
-    private func CemuGameListGetRow(
-        _ index: UInt64, _ outRow: UnsafeMutablePointer<CemuGameListRow>
-    ) -> Bool
+@_silgen_name("CemuGameListGetRow")
+private func CemuGameListGetRow(
+    _ index: UInt64, _ outRow: UnsafeMutablePointer<CemuGameListRow>
+) -> Bool
 
-    @_silgen_name("CemuGameListFreeBuffer")
-    private func CemuGameListFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
+@_silgen_name("CemuGameListFreeBuffer")
+private func CemuGameListFreeBuffer(_ ptr: UnsafeMutableRawPointer?)
 
-    @_silgen_name("CemuSwiftUILaunchTitleById")
-    private func CemuSwiftUILaunchTitleById(_ titleId: UInt64) -> Bool
+@_silgen_name("CemuSwiftUILaunchTitleById")
+private func CemuSwiftUILaunchTitleById(_ titleId: UInt64) -> Bool
 
-    final class CemuBackend: GameListBackend {
-        func create() {
-            CemuGameListCreate()
-        }
-
-        func destroy() {
-            CemuGameListDestroy()
-        }
-
-        func refresh() {
-            CemuGameListRefresh()
-        }
-
-        func count() -> UInt64 {
-            CemuGameListGetCount()
-        }
-
-        func isScanning() -> Bool {
-            CemuGameListIsScanning()
-        }
-
-        func row(index: UInt64, outRow: UnsafeMutablePointer<CemuGameListRow>) -> Bool {
-            CemuGameListGetRow(index, outRow)
-        }
-
-        func freeBuffer(_ ptr: UnsafeMutableRawPointer?) {
-            CemuGameListFreeBuffer(ptr)
-        }
-
-        func launchTitleById(_ titleId: UInt64) -> Bool {
-            CemuSwiftUILaunchTitleById(titleId)
-        }
+final class CemuBackend: GameListBackend {
+    func create() {
+        CemuGameListCreate()
     }
-#endif
+
+    func destroy() {
+        CemuGameListDestroy()
+    }
+
+    func refresh() {
+        CemuGameListRefresh()
+    }
+
+    func count() -> UInt64 {
+        CemuGameListGetCount()
+    }
+
+    func isScanning() -> Bool {
+        CemuGameListIsScanning()
+    }
+
+    func row(index: UInt64, outRow: UnsafeMutablePointer<CemuGameListRow>) -> Bool {
+        CemuGameListGetRow(index, outRow)
+    }
+
+    func freeBuffer(_ ptr: UnsafeMutableRawPointer?) {
+        CemuGameListFreeBuffer(ptr)
+    }
+
+    func launchTitleById(_ titleId: UInt64) -> Bool {
+        CemuSwiftUILaunchTitleById(titleId)
+    }
+}
 
 protocol GameListBackend {
     func create()
@@ -371,7 +369,7 @@ struct GameList: View {
     private func launchGame(titleID: UInt64) {
         if !backend.launchTitleById(titleID) {
             #if os(iOS)
-                launchErrorMessage = "Title launch is not available on iOS yet."
+                launchErrorMessage = "Failed to launch title."
             #endif
         }
     }
