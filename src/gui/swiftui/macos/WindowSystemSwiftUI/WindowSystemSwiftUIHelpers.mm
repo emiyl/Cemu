@@ -304,7 +304,7 @@ bool InitializeRendererForMainView(NSView *mainView, int width, int height,
   const auto api = ActiveSettings::GetGraphicsAPI();
   if (api == kVulkan)
     g_renderer_canvas = CreateVulkanCanvas();
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
   else
     g_renderer_canvas = CreateMetalCanvas();
 #endif
@@ -333,7 +333,7 @@ bool InitializeRendererForPadView(NSView *padView, int width, int height,
   const auto api = ActiveSettings::GetGraphicsAPI();
   if (api == kVulkan)
     g_pad_renderer_canvas = CreateVulkanCanvas();
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
   else
     g_pad_renderer_canvas = CreateMetalCanvas();
 #endif

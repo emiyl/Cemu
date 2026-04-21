@@ -62,20 +62,22 @@ GraphicAPI ResolveGraphicApi(int32_t graphicApi)
     const int32_t clamped = Clamp(graphicApi, static_cast<int32_t>(GraphicAPI::kOpenGL), static_cast<int32_t>(GraphicAPI::kMetal));
     if (clamped == static_cast<int32_t>(GraphicAPI::kOpenGL))
     {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
         return GraphicAPI::kMetal;
 #else
         return GraphicAPI::kVulkan;
 #endif
     }
+#ifdef ENABLE_VULKAN
     if (clamped == static_cast<int32_t>(GraphicAPI::kVulkan) && !g_vulkan_available)
     {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
         return GraphicAPI::kMetal;
 #else
         return GraphicAPI::kVulkan;
 #endif
     }
+#endif
 #if !ENABLE_METAL
     if (clamped == static_cast<int32_t>(GraphicAPI::kMetal))
         return GraphicAPI::kVulkan;
@@ -122,7 +124,7 @@ extern "C" bool CemuSettingsLoad(CemuSettingsState* outState)
     outState->graphicApi = static_cast<int32_t>(config.graphic_api.GetValue());
     if (outState->graphicApi == static_cast<int32_t>(GraphicAPI::kOpenGL))
     {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
         outState->graphicApi = static_cast<int32_t>(GraphicAPI::kMetal);
 #else
         outState->graphicApi = static_cast<int32_t>(GraphicAPI::kVulkan);
@@ -131,7 +133,7 @@ extern "C" bool CemuSettingsLoad(CemuSettingsState* outState)
     outState->vsync = config.vsync;
     outState->asyncCompile = ToInt32(config.async_compile);
     outState->gx2DrawDoneSync = 1;
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     outState->forceMeshShaders = ToInt32(config.force_mesh_shaders);
     outState->supportsMetal = 1;
 #else
@@ -181,7 +183,7 @@ extern "C" bool CemuSettingsLoad(CemuSettingsState* outState)
     
     outState->crashDump = static_cast<int32_t>(config.crash_dump.GetValue());
     outState->gdbPort = config.gdb_port;
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     outState->framebufferFetch = ToInt32(config.framebuffer_fetch);
 #else
     outState->framebufferFetch = 0;
@@ -209,7 +211,7 @@ extern "C" bool CemuSettingsSave(const CemuSettingsState* inState)
     config.vsync = Clamp(inState->vsync, 0, 3);
     config.async_compile = ToBool(inState->asyncCompile);
     config.gx2drawdone_sync = true;
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     config.force_mesh_shaders = ToBool(inState->forceMeshShaders);
 #endif
     config.overrideAppGammaPreference = ToBool(inState->overrideGamma);
@@ -256,7 +258,7 @@ extern "C" bool CemuSettingsSave(const CemuSettingsState* inState)
     
     config.crash_dump = ResolveCrashDump(inState->crashDump);
     config.gdb_port = Clamp(inState->gdbPort, 1000, 65535);
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     config.framebuffer_fetch = ToBool(inState->framebufferFetch);
 #endif
     
@@ -294,7 +296,7 @@ extern "C" bool CemuSettingsSetMlcPath(const char* path)
 
 extern "C" const char* CemuSettingsGetGpuCaptureDir(void)
 {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     return strdup(GetConfig().gpu_capture_dir.GetValue().c_str());
 #else
     return strdup("");
@@ -303,7 +305,7 @@ extern "C" const char* CemuSettingsGetGpuCaptureDir(void)
 
 extern "C" bool CemuSettingsSetGpuCaptureDir(const char* path)
 {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     GetConfig().gpu_capture_dir = SafeStringFromBuffer(path);
     GetConfigHandle().Save();
 #else
@@ -319,7 +321,7 @@ extern "C" const char* CemuSettingsGetDefaultMlcPath(void)
 
 extern "C" const char* CemuSettingsGetDefaultGpuCaptureDir(void)
 {
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
     return strdup("");
 #else
     return strdup("");

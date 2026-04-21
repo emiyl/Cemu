@@ -23,6 +23,6 @@ public:
 
 std::unique_ptr<RenderCanvas> CreateVulkanCanvas();
 
-#if ENABLE_METAL
+#ifdef ENABLE_METAL
 std::unique_ptr<RenderCanvas> CreateMetalCanvas();
 #endif
