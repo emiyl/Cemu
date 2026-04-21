@@ -4,9 +4,19 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
   add_executable(CemuSwiftUiIosApp MACOSX_BUNDLE
     ios/CemuIosApp.swift
     ios/IosBackends.swift
+    ios/LaunchBridge.cpp
+    ios/WindowSystemIOS.cpp
     common/ContentView.swift
     common/GameList.swift
+    common/GameList.cpp
+    common/GameList.h
     common/SettingsView.swift
+    common/SettingsView.cpp
+    common/SettingsView.h
+    macos/RegionStrings.cpp
+    macos/RegionStrings.h
+    macos/SwiftUICemuConfig.cpp
+    macos/SwiftUICemuConfig.h
     common/settingsTabs/GeneralSettingsTab.swift
     common/settingsTabs/GraphicsSettingsTab.swift
     common/settingsTabs/AudioSettingsTab.swift
@@ -25,6 +35,29 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "NO"
     XCODE_ATTRIBUTE_CODE_SIGNING_REQUIRED "NO"
+  )
+
+  target_compile_definitions(CemuSwiftUiIosApp PRIVATE VK_NO_PROTOTYPES)
+
+  target_include_directories(CemuSwiftUiIosApp PRIVATE "../../")
+  target_include_directories(CemuSwiftUiIosApp PUBLIC "../")
+  target_include_directories(CemuSwiftUiIosApp PRIVATE "${CMAKE_SOURCE_DIR}/dependencies/Vulkan-Headers/include")
+
+  if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
+    target_include_directories(CemuSwiftUiIosApp PRIVATE
+      "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/include"
+    )
+  endif()
+
+  target_link_libraries(CemuSwiftUiIosApp PRIVATE
+    CemuAudio
+    CemuCafe
+    CemuCommon
+    CemuComponents
+    CemuConfig
+    CemuInput
+    CemuResource
+    CemuUtil
   )
 
   return()
