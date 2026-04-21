@@ -187,6 +187,12 @@ else()
 	add_compile_definitions(HAS_CURL=0)
 endif()
 
+if (ENABLE_SDL)
+	add_compile_definitions(HAS_SDL=1)
+else()
+	add_compile_definitions(HAS_SDL=0)
+endif()
+
 # audio backends
 if (WIN32)
 	option(ENABLE_DIRECTAUDIO "Enables the directaudio backend" ON)
@@ -195,7 +201,9 @@ endif()
 option(ENABLE_CUBEB "Enabled cubeb backend" ON)
 
 find_package(Threads REQUIRED)
-find_package(SDL2 REQUIRED)
+if (ENABLE_SDL)
+	find_package(SDL2 REQUIRED)
+endif()
 if (ENABLE_CURL)
 	find_package(CURL REQUIRED)
 endif()
