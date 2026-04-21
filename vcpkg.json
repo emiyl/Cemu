@@ -29,7 +29,10 @@
       "name": "fmt",
       "version>=": "12.1.0"
     },
-    "hidapi",
+    {
+      "name": "hidapi",
+      "platform": "!ios"
+    },
     "libpng",
     "glm",
     {
@@ -37,7 +40,10 @@
       "default-features": false
     },
     "zstd",
-    "wxwidgets",
+    {
+      "name": "wxwidgets",
+      "platform": "!ios"
+    },
     "openssl",
     {
       "name": "curl",
@@ -59,7 +65,10 @@
         "zip"
       ]
     },
-    "libusb"
+    {
+      "name": "libusb",
+      "platform": "!ios"
+    }
   ],
   "overrides": [
     {
