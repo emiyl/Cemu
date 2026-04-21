@@ -11,6 +11,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
+#include <mutex>
 #include <vector>
 
 #if BOOST_OS_MACOS || TARGET_OS_IOS
@@ -25,6 +26,17 @@ void HandlePostUpdate();
 
 // Config
 SwiftUICemuConfig g_cemuConfig;
+
+extern "C" bool CemuAppInit()
+{
+    static std::once_flag init_once;
+    static bool init_ok = false;
+    std::call_once(init_once, []() {
+        CemuApp app;
+        init_ok = app.OnInit();
+    });
+    return init_ok;
+}
 
 #if BOOST_OS_MACOS
 void CemuApp::DeterminePaths(std::set<fs::path>& failedWriteAccess) // for MacOS
@@ -198,7 +210,9 @@ bool CemuApp::OnInit()
 #endif
     CemuCommonInit();
     
+#ifdef ENABLE_VULKAN
     InitializeGlobalVulkan();
+#endif
     return true;
 }
 

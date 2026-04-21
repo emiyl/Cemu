@@ -555,6 +555,8 @@ namespace CafeSystem
 			buffer = "macOS";
 
 		platform = buffer.c_str();
+		#elif TARGET_OS_IOS
+		platform = "iOS";
 		
 		#elif BOOST_OS_BSD
 		#if defined(__FreeBSD__)
@@ -567,6 +569,8 @@ namespace CafeSystem
 		platform = "Unknown BSD";
 		#endif
 		#endif
+		if (!platform)
+			platform = "Unknown";
 		cemuLog_log(LogType::Force, "Platform: {}", platform);
 	}
 
