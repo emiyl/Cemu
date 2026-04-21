@@ -1,4 +1,6 @@
 add_library(CemuWxGui STATIC
+  ../common/components/gameList.cpp
+  ../common/components/gameList.h
   canvas/IRenderCanvas.h
   CemuApp.cpp
   CemuApp.h

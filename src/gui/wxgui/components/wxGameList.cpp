@@ -32,6 +32,7 @@
 #include "wxgui/CemuApp.h"
 #include "wxgui/helpers/wxHelpers.h"
 #include "wxgui/MainWindow.h"
+#include "common/components/gameList.h"
 
 #include "../wxHelper.h"
 
@@ -59,84 +60,6 @@ wxDEFINE_EVENT(wxEVT_OPEN_GRAPHIC_PACK, wxTitleIdEvent);
 wxDEFINE_EVENT(wxEVT_GAME_ENTRY_ADDED_OR_REMOVED, wxTitleIdEvent);
 
 constexpr uint64 kDefaultEntryData = 0x1337;
-
-void _stripPathFilename(fs::path& path)
-{
-	if (path.has_extension())
-		path = path.parent_path();
-}
-
-std::vector<fs::path> _getCachesPaths(const TitleId& titleId)
-{
-	std::vector<fs::path> cachePaths{
-		ActiveSettings::GetCachePath(L"shaderCache/driver/vk/{:016x}.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/precompiled/{:016x}_spirv.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/precompiled/{:016x}_gl.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/precompiled/{:016x}_air.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/transferable/{:016x}_shaders.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/transferable/{:016x}_mtlshaders.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/transferable/{:016x}_vkpipeline.bin", titleId),
-		ActiveSettings::GetCachePath(L"shaderCache/transferable/{:016x}_mtlpipeline.bin", titleId)};
-
-	cachePaths.erase(std::remove_if(cachePaths.begin(), cachePaths.end(),
-									[](const fs::path& cachePath) {
-										std::error_code ec;
-										return !fs::exists(cachePath, ec);
-									}),
-					 cachePaths.end());
-
-	return cachePaths;
-}
-
-// Convert PNG to Apple icon image format
-bool writeICNS(const fs::path& pngPath, const fs::path& icnsPath) {
-	// Read PNG file
-	std::ifstream pngFile(pngPath, std::ios::binary);
-	if (!pngFile)
-		return false;
-
-	// Get PNG size
-	pngFile.seekg(0, std::ios::end);
-	uint32 pngSize = static_cast<uint32>(pngFile.tellg());
-	pngFile.seekg(0, std::ios::beg);
-
-	// Calculate total file size (header + size + type + data)
-	uint32 totalSize = 8 + 8 + pngSize;
-
-	// Create output file
-	std::ofstream icnsFile(icnsPath, std::ios::binary);
-	if (!icnsFile)
-		return false;
-
-	// Write ICNS header
-	icnsFile.put(0x69); // 'i'
-	icnsFile.put(0x63); // 'c'
-	icnsFile.put(0x6e); // 'n'
-	icnsFile.put(0x73); // 's'
-
-	// Write total file size (big endian)
-	icnsFile.put((totalSize >> 24) & 0xFF);
-	icnsFile.put((totalSize >> 16) & 0xFF);
-	icnsFile.put((totalSize >> 8) & 0xFF);
-	icnsFile.put(totalSize & 0xFF);
-
-	// Write icon type (ic07 = 128x128 PNG)
-	icnsFile.put(0x69); // 'i'
-	icnsFile.put(0x63); // 'c'
-	icnsFile.put(0x30); // '0'
-	icnsFile.put(0x37); // '7'
-
-	// Write PNG size (big endian)
-	icnsFile.put((pngSize >> 24) & 0xFF);
-	icnsFile.put((pngSize >> 16) & 0xFF);
-	icnsFile.put((pngSize >> 8) & 0xFF);
-	icnsFile.put(pngSize & 0xFF);
-
-	// Copy PNG data
-	icnsFile << pngFile.rdbuf();
-
-	return true;
-}
 
 wxGameList::wxGameList(wxWindow* parent, wxWindowID id)
 	: wxListView(parent, id, wxDefaultPosition, wxDefaultSize, GetStyleFlags(Style::kList)), m_style(Style::kList)
@@ -670,7 +593,7 @@ void wxGameList::OnContextMenu(wxContextMenuEvent& event)
 			menu.Append(kContextMenuDLCFolder, _("&DLC directory"))->Enable(gameInfo.HasAOC());
 
 			menu.AppendSeparator();
-			menu.Append(kContextMenuRemoveCache, _("&Remove shader caches"))->Enable(!_getCachesPaths(gameInfo.GetBaseTitleId()).empty());
+			menu.Append(kContextMenuRemoveCache, _("&Remove shader caches"))->Enable(!gui::common::GetCachesPaths(gameInfo.GetBaseTitleId()).empty());
 
 			menu.AppendSeparator();
 			menu.Append(kContextMenuEditGraphicPacks, _("&Edit graphic packs"));
@@ -746,7 +669,7 @@ void wxGameList::OnContextMenuSelected(wxCommandEvent& event)
 			case kContextMenuGameFolder:
 				{
 				fs::path path(gameInfo.GetBase().GetPath());
-				_stripPathFilename(path);
+				gui::common::StripPathFilename(path);
 				wxLaunchDefaultApplication(wxHelper::FromPath(path));
 				break;
 				}
@@ -774,20 +697,20 @@ void wxGameList::OnContextMenuSelected(wxCommandEvent& event)
 			case kContextMenuUpdateFolder:
 			{
 				fs::path path(gameInfo.GetUpdate().GetPath());
-				_stripPathFilename(path);
+				gui::common::StripPathFilename(path);
 				wxLaunchDefaultApplication(wxHelper::FromPath(path));
 				break;
 			}
 			case kContextMenuDLCFolder:
 			{
 				fs::path path(gameInfo.GetAOC().front().GetPath());
-				_stripPathFilename(path);
+				gui::common::StripPathFilename(path);
 				wxLaunchDefaultApplication(wxHelper::FromPath(path));
 				break;
 			}
 			case kContextMenuRemoveCache:
 			{
-				RemoveCache(_getCachesPaths(gameInfo.GetBaseTitleId()), gameInfo.GetTitleName());
+				RemoveCache(gui::common::GetCachesPaths(gameInfo.GetBaseTitleId()), gameInfo.GetTitleName());
 				break;
 			}
 			case kContextMenuEditGraphicPacks:
@@ -1452,26 +1375,12 @@ void wxGameList::CreateShortcut(GameInfo2& gameInfo)
 		}
 	}();
 
-	std::string desktopExecEntry = flatpakId ? fmt::format("/usr/bin/flatpak run {0} --title-id {1:016x}", flatpakId, titleId)
-											 : fmt::format("{0:?} --title-id {1:016x}", _pathToUtf8(exePath), titleId);
-
-	// 'Icon' accepts spaces in file name, does not accept quoted file paths
-	// 'Exec' does not accept non-escaped spaces, and can accept quoted file paths
-	auto desktopEntryString = fmt::format(
-		"[Desktop Entry]\n"
-		"Name={0}\n"
-		"Comment=Play {0} on Cemu\n"
-		"Exec={1}\n"
-		"Icon={2}\n"
-		"Terminal=false\n"
-		"Type=Application\n"
-		"Categories=Game;\n",
+	const std::string desktopExecEntry = gui::common::BuildLinuxDesktopExecEntry(_pathToUtf8(exePath), titleId, flatpakId);
+	const std::string desktopEntryString = gui::common::BuildLinuxDesktopEntry(
 		titleName.utf8_string(),
 		desktopExecEntry,
-		_pathToUtf8(iconPath.value_or("")));
-
-	if (flatpakId)
-		desktopEntryString += fmt::format("X-Flatpak={}\n", flatpakId);
+		_pathToUtf8(iconPath.value_or("")),
+		flatpakId);
 
 	std::ofstream outputStream(output_path.utf8_string());
 	if (!outputStream.good())
@@ -1545,35 +1454,8 @@ void wxGameList::CreateShortcut(GameInfo2& gameInfo)
 		}
 	}();
 
-	std::string runCommand = fmt::format("#!/bin/zsh\n\n{0:?} --title-id {1:016x}", _pathToUtf8(exePath), titleId);
-	const std::string infoPlist = fmt::format(
-	"<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-	"<!DOCTYPE plist PUBLIC \"-//Apple//DTD PLIST 1.0//EN\" \"http://www.apple.com/DTDs/PropertyList-1.0.dtd\">\n"
-	"<plist version=\"1.0\">\n"
-	"<dict>\n"
-	"	<key>CFBundleDisplayName</key>\n"
-	"	<string>{0}</string>\n"
-	"	<key>CFBundleExecutable</key>\n"
-	"	<string>run.sh</string>\n"
-	"	<key>CFBundleIconFile</key>\n"
-	"	<string>shortcut.icns</string>\n"
-	"	<key>CFBundleName</key>\n"
-	"	<string>{0}</string>\n"
-	"	<key>CFBundlePackageType</key>\n"
-	"	<string>APPL</string>\n"
-	"	<key>CFBundleSignature</key>\n"
-	"	<string>\?\?\?\?</string>\n"
-	"	<key>LSApplicationCategoryType</key>\n"
-	"	<string>public.app-category.games</string>\n"
-	"	<key>CFBundleShortVersionString</key>\n"
-	"	<string>{1}</string>\n"
-	"	<key>CFBundleVersion</key>\n"
-	"	<string>{1}</string>\n"
-	"</dict>\n"
-	"</plist>\n",
-	gameInfo.GetTitleName(),
-	std::to_string(gameInfo.GetVersion())
-	);
+	const std::string runCommand = gui::common::BuildMacRunCommand(_pathToUtf8(exePath), titleId);
+	const std::string infoPlist = gui::common::BuildMacInfoPlist(gameInfo.GetTitleName(), std::to_string(gameInfo.GetVersion()));
 	// write Info.plist to infoPath
 	std::ofstream infoStream(infoPath);
 	std::ofstream scriptStream(scriptPath);
@@ -1604,7 +1486,7 @@ void wxGameList::CreateShortcut(GameInfo2& gameInfo)
 	// Convert icon to icns, only works for 128x128 PNG
 	// Alternatively, can run the command "sips -s format icns {iconPath} --out '{icnsPath}'"
 	// using std::system() to handle images of any size
-	if (!writeICNS(*iconPath, icnsPath))
+	if (!gui::common::WriteICNS(*iconPath, icnsPath))
 	{
 		cemuLog_log(LogType::Force, "Failed to convert icon to icns");
 		return;
