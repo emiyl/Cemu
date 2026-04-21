@@ -187,7 +187,6 @@ if (MACOS_BUNDLE)
 				  	@executable_path/../Frameworks/libusb-1.0.0.dylib
 					  "$<TARGET_FILE:CemuBin>"
 	  )
-  )
 	endif()
   
 else()
