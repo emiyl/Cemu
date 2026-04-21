@@ -552,6 +552,10 @@ if (ENABLE_VULKAN)
   )
 endif()
 
+if (IS_IOS AND ENABLE_VULKAN)
+  target_include_directories(CemuCafe PRIVATE "${CMAKE_SOURCE_DIR}/dependencies/Vulkan-Headers/include")
+endif()
+
 if(APPLE)
 	target_sources(CemuCafe PRIVATE
 	    HW/Latte/Renderer/MetalView.mm
