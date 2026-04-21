@@ -73,12 +73,14 @@ add_subdirectory(util)
 add_subdirectory(imgui)
 add_subdirectory(resource)
 
-add_executable(CemuBin
-	main.cpp
-	mainLLE.cpp
-)
+if(NOT IS_IOS)
+	add_executable(CemuBin
+		main.cpp
+		mainLLE.cpp
+	)
 
-cemu_use_precompiled_header(CemuBin)
+	cemu_use_precompiled_header(CemuBin)
+endif()
 
 if(MSVC AND MSVC_VERSION EQUAL 1940)
 	# workaround for an msvc issue on VS 17.10 where generated ILK files are too large
@@ -93,19 +95,17 @@ if(WIN32)
 	)
 endif()
 
-if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
-    set_target_properties(CemuBin PROPERTIES
-        XCODE_ATTRIBUTE_ENABLE_DEBUG_DYLIB[variant=Debug] "YES"
-    )
-endif()
-
-string(TIMESTAMP CURRENT_YEAR "%Y" UTC)
-
 set_property(TARGET CemuBin PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set_property(TARGET CemuBin PROPERTY WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
 set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
 
-if (MACOS_BUNDLE)
+if(MACOSX_BUNDLE AND CMAKE_GENERATOR STREQUAL "Xcode")
+	set_target_properties(CemuBin PROPERTIES
+		XCODE_ATTRIBUTE_ENABLE_DEBUG_DYLIB[variant=Debug] "YES"
+	)
+
+	string(TIMESTAMP CURRENT_YEAR "%Y" UTC)
+
 	set_property(TARGET CemuBin PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resource/MacOSXBundleInfo.plist.in")
 
 	set(RESOURCE_FILES "${CMAKE_SOURCE_DIR}/src/resource/cemu.icns")
@@ -160,11 +160,11 @@ if (MACOS_BUNDLE)
 		else()
 		    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/libusb-1.0.0.dylib")
 		endif()
-    add_custom_command(TARGET CemuBin POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-        "${LIBUSB_PATH}"
-        "${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
-    )
+		add_custom_command(TARGET CemuBin POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy
+			"${LIBUSB_PATH}"
+			"${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
+		)
 	endif()
 
 	add_custom_command(TARGET CemuBin POST_BUILD
@@ -190,7 +190,7 @@ if (MACOS_BUNDLE)
 	endif()
   
 else()
-    if(APPLE)
+    if(APPLE AND !IS_IOS)
 		if (ENABLE_VULKAN)
 			find_library(MOLTENVK_LIBRARY
 				NAMES MoltenVK moltenvk libMoltenVK.dylib
@@ -210,34 +210,36 @@ else()
     endif()
 endif()
 
-set_target_properties(CemuBin PROPERTIES
-	# multi-configuration generators will add a config subdirectory to RUNTIME_OUTPUT_DIRECTORY if no generator expression is used
-	# to get the same behavior everywhere we append an empty generator expression
-	RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bin/$<1:>"
-	OUTPUT_NAME "${OUTPUT_NAME}"
-)
+if (NOT IS_IOS)
+	set_target_properties(CemuBin PROPERTIES
+		# multi-configuration generators will add a config subdirectory to RUNTIME_OUTPUT_DIRECTORY if no generator expression is used
+		# to get the same behavior everywhere we append an empty generator expression
+		RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bin/$<1:>"
+		OUTPUT_NAME "${OUTPUT_NAME}"
+	)
 
-target_link_libraries(CemuBin PRIVATE
-	CemuAudio
-	CemuCafe
-	CemuCommon
-	CemuComponents
-	CemuConfig
-	CemuGui
-	CemuInput
-	CemuUtil
-	SDL2::SDL2
-)
+	target_link_libraries(CemuBin PRIVATE
+		CemuAudio
+		CemuCafe
+		CemuCommon
+		CemuComponents
+		CemuConfig
+		CemuGui
+		CemuInput
+		CemuUtil
+		SDL2::SDL2
+	)
 
-if(UNIX AND NOT APPLE)
-	# due to nasm output some linkers will make stack executable
-	# cemu does not require this so we explicity disable it
-	target_link_options(CemuBin PRIVATE -z noexecstack)
-	# some residual debug info from boost/discord-rpc is normally included
-	# most likely not helpful in debugging problems with cemu code
-	target_link_options(CemuBin PRIVATE "$<$<CONFIG:Release>:-Xlinker;--strip-debug>")
-endif()
+	if(UNIX AND NOT APPLE)
+		# due to nasm output some linkers will make stack executable
+		# cemu does not require this so we explicity disable it
+		target_link_options(CemuBin PRIVATE -z noexecstack)
+		# some residual debug info from boost/discord-rpc is normally included
+		# most likely not helpful in debugging problems with cemu code
+		target_link_options(CemuBin PRIVATE "$<$<CONFIG:Release>:-Xlinker;--strip-debug>")
+	endif()
 
-if (BSD)
-	target_link_libraries(CemuBin PRIVATE execinfo SPIRV-Tools SPIRV-Tools-opt)
+	if (BSD)
+		target_link_libraries(CemuBin PRIVATE execinfo SPIRV-Tools SPIRV-Tools-opt)
+	endif()
 endif()
