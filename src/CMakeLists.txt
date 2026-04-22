@@ -99,10 +99,10 @@ if(NOT IS_IOS)
 	set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
 endif()
 
-if(MACOSX_BUNDLE AND CMAKE_GENERATOR STREQUAL "Xcode")
-	set_target_properties(CemuBin PROPERTIES
-		XCODE_ATTRIBUTE_ENABLE_DEBUG_DYLIB[variant=Debug] "YES"
-	)
+if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
+    set_target_properties(CemuBin PROPERTIES
+        XCODE_ATTRIBUTE_ENABLE_DEBUG_DYLIB[variant=Debug] "YES"
+    )
 
 	string(TIMESTAMP CURRENT_YEAR "%Y" UTC)
 
@@ -166,6 +166,19 @@ if(MACOSX_BUNDLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 			"${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
 		)
 	endif()
+
+	if (EXISTS "/usr/local/lib/libMoltenVK.dylib")
+		set(MOLTENVK_PATH "/usr/local/lib/libMoltenVK.dylib")
+	elseif (EXISTS "/opt/homebrew/lib/libMoltenVK.dylib")
+		set(MOLTENVK_PATH "/opt/homebrew/lib/libMoltenVK.dylib")
+	else()
+		message(FATAL_ERROR "failed to find libMoltenVK.dylib")
+	endif ()
+	set(UPDATE_SH_PATH "${CMAKE_SOURCE_DIR}/src/resource/update.sh")
+
+	set(APP_BUNDLE_DIR "$<TARGET_BUNDLE_DIR:CemuBin>")
+	set(FRAMEWORKS_DIR "${APP_BUNDLE_DIR}/Contents/Frameworks")
+	set(RESOURCES_DIR  "${APP_BUNDLE_DIR}/Contents/Resources")
 
 	add_custom_command(TARGET CemuBin POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy
