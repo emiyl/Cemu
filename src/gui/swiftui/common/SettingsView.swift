@@ -444,6 +444,11 @@ final class SettingsStore: ObservableObject {
     private var autosaveWorkItem: DispatchWorkItem?
     private var isLoading = false
 
+    #if os(iOS)
+        private var securityScopedURLs: [String: URL] = [:]
+        private static let bookmarkDefaultsKey = "cemuGamePathBookmarks"
+    #endif
+
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),
         LanguageOption(id: 1, title: "Japanese"),
@@ -478,6 +483,9 @@ final class SettingsStore: ObservableObject {
         defaultMlcPath = backend.getDefaultMlcPath()
         gpuCaptureDir = backend.getGpuCaptureDir()
         defaultGpuCaptureDir = backend.getDefaultGpuCaptureDir()
+        #if os(iOS)
+            restoreSecurityScopedAccess()
+        #endif
         reloadGamePaths()
         reloadAccounts()
         if state.activeAccountPersistentId == 0, let first = accounts.first {
@@ -545,6 +553,11 @@ final class SettingsStore: ObservableObject {
 
     func removeGamePath(at offsets: IndexSet) {
         for idx in offsets.sorted(by: >) {
+            #if os(iOS)
+                if idx < gamePaths.count {
+                    stopSecurityScopedAccess(for: gamePaths[idx])
+                }
+            #endif
             _ = backend.removeGamePath(at: UInt64(idx))
         }
         reloadGamePaths()
@@ -556,6 +569,9 @@ final class SettingsStore: ObservableObject {
         else {
             return
         }
+        #if os(iOS)
+            stopSecurityScopedAccess(for: selectedGamePath)
+        #endif
         _ = backend.removeGamePath(at: UInt64(idx))
         reloadGamePaths()
     }
@@ -605,6 +621,74 @@ final class SettingsStore: ObservableObject {
     var showCustomNetwork: Bool {
         state.supportsCustomNetworkService != 0
     }
+
+    #if os(iOS)
+        func addGamePath(url: URL) {
+            let path = url.path
+            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { return }
+
+            if url.startAccessingSecurityScopedResource() {
+                securityScopedURLs[trimmed] = url
+            }
+
+            if let bookmarkData = try? url.bookmarkData() {
+                var bookmarks =
+                    UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
+                    as? [String: Data] ?? [:]
+                bookmarks[trimmed] = bookmarkData
+                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
+            }
+
+            _ = backend.addGamePath(trimmed)
+            reloadGamePaths()
+        }
+
+        private func restoreSecurityScopedAccess() {
+            let storedPaths = Set(backend.getGamePaths())
+            guard
+                var bookmarks = UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
+                    as? [String: Data]
+            else { return }
+
+            var changed = false
+            for (path, bookmarkData) in bookmarks {
+                guard storedPaths.contains(path) else {
+                    bookmarks.removeValue(forKey: path)
+                    changed = true
+                    continue
+                }
+                var isStale = false
+                if let resolvedURL = try? URL(
+                    resolvingBookmarkData: bookmarkData,
+                    bookmarkDataIsStale: &isStale)
+                {
+                    if resolvedURL!.startAccessingSecurityScopedResource() {
+                        securityScopedURLs[path] = resolvedURL
+                    }
+                    if isStale, let newData = try? resolvedURL!.bookmarkData() {
+                        bookmarks[path] = newData
+                        changed = true
+                    }
+                }
+            }
+
+            if changed {
+                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
+            }
+        }
+
+        private func stopSecurityScopedAccess(for path: String) {
+            securityScopedURLs[path]?.stopAccessingSecurityScopedResource()
+            securityScopedURLs.removeValue(forKey: path)
+            if var bookmarks = UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
+                as? [String: Data]
+            {
+                bookmarks.removeValue(forKey: path)
+                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
+            }
+        }
+    #endif
 }
 
 struct SettingsView: View {
@@ -719,11 +803,7 @@ struct SettingsView: View {
                 guard case .success(let urls) = result, let url = urls.first else {
                     return
                 }
-                let didAccess = url.startAccessingSecurityScopedResource()
-                if didAccess {
-                    defer { url.stopAccessingSecurityScopedResource() }
-                }
-                store.addGamePath(url.path)
+                store.addGamePath(url: url)
             }
         #endif
     }
@@ -856,7 +936,3 @@ extension SettingsTab: Identifiable {
         }
     }
 #endif
-
-#Preview {
-    SettingsView(backend: MockSettingsBackend())
-}
