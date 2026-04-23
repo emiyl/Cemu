@@ -7,6 +7,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     ios/IosBackends.swift
     ios/LaunchBridge.cpp
     ios/WindowSystemIOS.cpp
+    ios/WindowSystemIOS_GameLoad.mm
+    ios/CemuAppIOS.mm
     common/ContentView.swift
     common/GameList.swift
     common/GameList.cpp
