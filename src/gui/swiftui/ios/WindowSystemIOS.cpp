@@ -106,13 +106,6 @@ bool WindowSystem::InputConfigWindowHasFocus()
     return false;
 }
 
-void WindowSystem::NotifyGameLoaded()
-{
-}
-
-void WindowSystem::NotifyGameExited()
-{
-}
 
 void WindowSystem::RefreshGameList()
 {
