@@ -1,5 +1,8 @@
 #include "util/highresolutiontimer/HighResolutionTimer.h"
 #include "Common/precompiled.h"
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
 
 HighResolutionTimer HighResolutionTimer::now()
 {
@@ -12,7 +15,7 @@ HighResolutionTimer HighResolutionTimer::now()
     clock_gettime(CLOCK_MONOTONIC_RAW, &pc);
     uint64 nsec = (uint64)pc.tv_sec * (uint64)1000000000 + (uint64)pc.tv_nsec;
     return HighResolutionTimer(nsec);
-#elif BOOST_OS_MACOS
+#elif BOOST_OS_MACOS || (defined(TARGET_OS_IOS) && TARGET_OS_IOS)
 	return HighResolutionTimer(clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW));
 #elif BOOST_OS_BSD
     timespec pc;
@@ -32,7 +35,7 @@ uint64 HighResolutionTimer::m_freq = []() -> uint64 {
 	LARGE_INTEGER freq;
 	QueryPerformanceFrequency(&freq);
 	return (uint64)(freq.QuadPart);
-#elif BOOST_OS_MACOS
+#elif BOOST_OS_MACOS || (defined(TARGET_OS_IOS) && TARGET_OS_IOS)
 	return 1000000000;
 #elif BOOST_OS_BSD
 	timespec pc;
