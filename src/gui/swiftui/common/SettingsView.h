@@ -64,6 +64,7 @@ typedef struct
     int32_t crashDump;
     int32_t gdbPort;
     int32_t framebufferFetch;
+    int32_t cpuMode;
 } CemuSettingsState;
 
 extern "C" bool CemuSettingsLoad(CemuSettingsState* outState);

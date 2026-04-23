@@ -126,6 +126,7 @@ struct CemuSettingsState: Codable, Equatable {
     var crashDump: Int32 = 0
     var gdbPort: Int32 = 1337
     var framebufferFetch: Int32 = 0
+    var cpuMode: Int32 = 4
 }
 
 protocol SettingsBackend: AnyObject {

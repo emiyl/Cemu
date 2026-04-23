@@ -9,6 +9,12 @@ extension SettingsView {
     var debugTab: some View {
         Form {
             Section("Debug") {
+                Picker("CPU Mode", selection: $store.state.cpuMode) {
+                    Text("Auto").tag(Int32(4))
+                    Text("Single-core recompiler").tag(Int32(1))
+                    Text("Multi-core recompiler").tag(Int32(3))
+                    Text("Single-core interpreter").tag(Int32(0))
+                }
                 Picker("Crash dump", selection: $store.state.crashDump) {
                     Text("Disabled").tag(Int32(0))
                     Text("Lite/Enabled").tag(Int32(1))

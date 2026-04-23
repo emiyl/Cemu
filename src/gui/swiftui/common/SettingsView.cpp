@@ -192,7 +192,8 @@ extern "C" bool CemuSettingsLoad(CemuSettingsState* outState)
 #else
     outState->framebufferFetch = 0;
 #endif
-    
+    outState->cpuMode = static_cast<int32_t>(config.cpu_mode.GetValue());
+
     return true;
 }
 
@@ -265,7 +266,8 @@ extern "C" bool CemuSettingsSave(const CemuSettingsState* inState)
 #ifdef ENABLE_METAL
     config.framebuffer_fetch = ToBool(inState->framebufferFetch);
 #endif
-    
+    config.cpu_mode = static_cast<CPUMode>(Clamp(inState->cpuMode, static_cast<int32_t>(CPUMode::SinglecoreInterpreter), static_cast<int32_t>(CPUMode::Auto)));
+
     GetConfigHandle().Save();
     return true;
 }
