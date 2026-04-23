@@ -274,8 +274,10 @@ public:
 
 	void SetShouldMaximizeConcurrentCompilation(bool shouldMaximizeConcurrentCompilation)
 	{
+#if !TARGET_OS_IOS
 	    if (m_supportsMetal3)
 	        m_device->setShouldMaximizeConcurrentCompilation(shouldMaximizeConcurrentCompilation);
+#endif
 	}
 
 	bool IsCommandBufferActive() const

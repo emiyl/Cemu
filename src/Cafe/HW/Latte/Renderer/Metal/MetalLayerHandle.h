@@ -11,6 +11,32 @@ public:
     MetalLayerHandle() = default;
     MetalLayerHandle(MTL::Device* device, const Vector2i& size, bool mainWindow);
 
+    MetalLayerHandle(MetalLayerHandle&& other) noexcept
+        : m_layer(other.m_layer), m_layerScaleX(other.m_layerScaleX),
+          m_layerScaleY(other.m_layerScaleY), m_drawable(other.m_drawable)
+    {
+        other.m_layer    = nullptr;
+        other.m_drawable = nullptr;
+    }
+
+    MetalLayerHandle& operator=(MetalLayerHandle&& other) noexcept
+    {
+        if (this != &other)
+        {
+            if (m_layer) m_layer->release();
+            m_layer          = other.m_layer;
+            m_layerScaleX    = other.m_layerScaleX;
+            m_layerScaleY    = other.m_layerScaleY;
+            m_drawable       = other.m_drawable;
+            other.m_layer    = nullptr;
+            other.m_drawable = nullptr;
+        }
+        return *this;
+    }
+
+    MetalLayerHandle(const MetalLayerHandle&)            = delete;
+    MetalLayerHandle& operator=(const MetalLayerHandle&) = delete;
+
     ~MetalLayerHandle();
 
     void Resize(const Vector2i& size);
