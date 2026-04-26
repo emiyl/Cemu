@@ -445,10 +445,6 @@ final class SettingsStore: ObservableObject {
     private var autosaveWorkItem: DispatchWorkItem?
     private var isLoading = false
 
-    #if os(iOS)
-        private var securityScopedURLs: [String: URL] = [:]
-        private static let bookmarkDefaultsKey = "cemuGamePathBookmarks"
-    #endif
 
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),
@@ -625,69 +621,33 @@ final class SettingsStore: ObservableObject {
 
     #if os(iOS)
         func addGamePath(url: URL) {
-            let path = url.path
-            let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+            let trimmed = IOSGameAccessManager.shared.add(url: url)
             guard !trimmed.isEmpty else { return }
-
-            if url.startAccessingSecurityScopedResource() {
-                securityScopedURLs[trimmed] = url
-            }
-
-            if let bookmarkData = try? url.bookmarkData() {
-                var bookmarks =
-                    UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
-                    as? [String: Data] ?? [:]
-                bookmarks[trimmed] = bookmarkData
-                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
-            }
-
             _ = backend.addGamePath(trimmed)
             reloadGamePaths()
         }
 
         private func restoreSecurityScopedAccess() {
+            // Access is restored at startup by IOSGameAccessManager.shared.
+            // Prune bookmarks for paths that were removed from config.
             let storedPaths = Set(backend.getGamePaths())
             guard
-                var bookmarks = UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
-                    as? [String: Data]
+                var bookmarks = UserDefaults.standard.dictionary(
+                    forKey: IOSGameAccessManager.bookmarkDefaultsKey) as? [String: Data]
             else { return }
-
             var changed = false
-            for (path, bookmarkData) in bookmarks {
-                guard storedPaths.contains(path) else {
-                    bookmarks.removeValue(forKey: path)
-                    changed = true
-                    continue
-                }
-                var isStale = false
-                if let resolvedURL = try? URL(
-                    resolvingBookmarkData: bookmarkData,
-                    bookmarkDataIsStale: &isStale)
-                {
-                    if resolvedURL!.startAccessingSecurityScopedResource() {
-                        securityScopedURLs[path] = resolvedURL
-                    }
-                    if isStale, let newData = try? resolvedURL!.bookmarkData() {
-                        bookmarks[path] = newData
-                        changed = true
-                    }
-                }
+            for path in bookmarks.keys where !storedPaths.contains(path) {
+                bookmarks.removeValue(forKey: path)
+                changed = true
             }
-
             if changed {
-                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
+                UserDefaults.standard.set(
+                    bookmarks, forKey: IOSGameAccessManager.bookmarkDefaultsKey)
             }
         }
 
         private func stopSecurityScopedAccess(for path: String) {
-            securityScopedURLs[path]?.stopAccessingSecurityScopedResource()
-            securityScopedURLs.removeValue(forKey: path)
-            if var bookmarks = UserDefaults.standard.dictionary(forKey: Self.bookmarkDefaultsKey)
-                as? [String: Data]
-            {
-                bookmarks.removeValue(forKey: path)
-                UserDefaults.standard.set(bookmarks, forKey: Self.bookmarkDefaultsKey)
-            }
+            IOSGameAccessManager.shared.remove(path: path)
         }
     #endif
 }

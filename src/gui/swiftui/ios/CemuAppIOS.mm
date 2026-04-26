@@ -1,6 +1,7 @@
 #include "Common/precompiled.h"
 #include "config/ActiveSettings.h"
 #include "gui/swiftui/macos/CemuApp.h"
+#include <TargetConditionals.h>
 
 #if TARGET_OS_IOS
 
@@ -35,31 +36,25 @@ void CemuApp::DeterminePaths(std::set<fs::path> &failedWriteAccess) {
     if (ec)
       exePath = fs::path(exePathBuffer.data());
 
-    NSArray *appSupportPaths = NSSearchPathForDirectoriesInDomains(
-        NSApplicationSupportDirectory, NSUserDomainMask, YES);
+    NSArray<NSURL *> *docURLs =
+        [fm URLsForDirectory:NSDocumentDirectory inDomains:NSUserDomainMask];
+    NSURL *documentsURL = docURLs.firstObject;
 
-    NSString *appSupport = [appSupportPaths firstObject];
-    NSString *cemuSupport = [appSupport stringByAppendingPathComponent:@"Cemu"];
-
-    [fm createDirectoryAtPath:cemuSupport
+    NSURL *cemuDataURL = [documentsURL URLByAppendingPathComponent:@"Cemu"];
+    [fm createDirectoryAtURL:cemuDataURL
         withIntermediateDirectories:YES
                          attributes:nil
                               error:nil];
 
-    user_data_path = config_path = fs::path([cemuSupport UTF8String]);
+    user_data_path = config_path = fs::path([[cemuDataURL path] UTF8String]);
 
-    NSArray *cachePaths = NSSearchPathForDirectoriesInDomains(
-        NSCachesDirectory, NSUserDomainMask, YES);
-
-    NSString *cacheDir = [cachePaths firstObject];
-    NSString *cemuCache = [cacheDir stringByAppendingPathComponent:@"Cemu"];
-
-    [fm createDirectoryAtPath:cemuCache
+    NSURL *cemuCacheURL = [cemuDataURL URLByAppendingPathComponent:@"cache"];
+    [fm createDirectoryAtURL:cemuCacheURL
         withIntermediateDirectories:YES
                          attributes:nil
                               error:nil];
 
-    cache_path = fs::path([cemuCache UTF8String]);
+    cache_path = fs::path([[cemuCacheURL path] UTF8String]);
 
     NSString *resourcePath = [[NSBundle mainBundle] resourcePath];
     data_path = fs::path([resourcePath UTF8String]);

@@ -4,6 +4,7 @@ import SwiftUI
 struct CemuIosApp: App {
     init() {
         CemuAppInit()
+        _ = IOSGameAccessManager.shared
     }
 
     var body: some Scene {
