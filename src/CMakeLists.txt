@@ -148,10 +148,10 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 			message(FATAL_ERROR "failed to find libMoltenVK.dylib")
 		endif ()
     
-    add_custom_command(TARGET CemuBin POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy 
-        "${MOLTENVK_PATH}"
-        "${FRAMEWORKS_DIR}/libMoltenVK.dylib")
+		add_custom_command(TARGET CemuBin POST_BUILD
+		COMMAND ${CMAKE_COMMAND} -E copy 
+			"${MOLTENVK_PATH}"
+			"${FRAMEWORKS_DIR}/libMoltenVK.dylib")
   endif()
   
 	if (ENABLE_LIBUSB)
@@ -187,6 +187,14 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 		COMMAND chmod 755
 			"${RESOURCES_DIR}/update.sh"
 	)
+
+	if (ENABLE_LIBUSB)
+		add_custom_command(TARGET CemuBin POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy
+				"${LIBUSB_PATH}"
+				"${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
+		)
+	endif()
 
 	set_target_properties(CemuBin PROPERTIES
 		BUILD_WITH_INSTALL_RPATH TRUE

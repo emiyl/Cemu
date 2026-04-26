@@ -189,6 +189,7 @@ if (ENABLE_SDL)
 	add_compile_definitions(HAS_SDL=1)
 else()
 	add_compile_definitions(HAS_SDL=0)
+	add_compile_definitions(HAS_LIBUSB)
 endif()
 
 # audio backends

@@ -37,15 +37,6 @@ set_property(TARGET CemuInput PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CO
 
 cemu_use_precompiled_header(CemuInput)
 
-if (ENABLE_SDL)
-	target_sources(CemuInput PRIVATE
-		api/SDL/SDLController.cpp
-		api/SDL/SDLControllerProvider.cpp
-		api/SDL/SDLController.h
-		api/SDL/SDLControllerProvider.h
-	)
-endif()
-
 if (ENABLE_LIBUSB)
 	target_sources(CemuInput PRIVATE
 		api/GameCube/GameCubeController.cpp
