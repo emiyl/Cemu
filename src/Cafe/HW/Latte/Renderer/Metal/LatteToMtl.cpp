@@ -202,6 +202,28 @@ const MetalPixelFormatInfo GetMtlPixelFormatInfo(Latte::E_GX2SURFFMT format, boo
 MTL::PixelFormat GetMtlPixelFormat(Latte::E_GX2SURFFMT format, bool isDepth)
 {
     auto pixelFormat = GetMtlPixelFormatInfo(format, isDepth).pixelFormat;
+    
+    // On iOS, BC formats are not supported - fall back to uncompressed equivalents
+#ifdef __APPLE__
+    #if TARGET_OS_IPHONE || TARGET_OS_SIMULATOR
+        // BC4 -> R8Unorm (red channel only)
+        if (pixelFormat == MTL::PixelFormatBC4_RUnorm)
+            pixelFormat = MTL::PixelFormatR8Unorm;
+        else if (pixelFormat == MTL::PixelFormatBC4_RSnorm)
+            pixelFormat = MTL::PixelFormatR8Snorm;
+        // BC5 -> RG8Unorm (red+green channels)
+        else if (pixelFormat == MTL::PixelFormatBC5_RGUnorm)
+            pixelFormat = MTL::PixelFormatRG8Unorm;
+        else if (pixelFormat == MTL::PixelFormatBC5_RGSnorm)
+            pixelFormat = MTL::PixelFormatRG8Snorm;
+        // BC1/BC2/BC3 -> RGBA8Unorm (fall back to full RGBA)
+        else if (pixelFormat == MTL::PixelFormatBC1_RGBA || pixelFormat == MTL::PixelFormatBC2_RGBA || pixelFormat == MTL::PixelFormatBC3_RGBA)
+            pixelFormat = MTL::PixelFormatRGBA8Unorm;
+        else if (pixelFormat == MTL::PixelFormatBC1_RGBA_sRGB || pixelFormat == MTL::PixelFormatBC2_RGBA_sRGB || pixelFormat == MTL::PixelFormatBC3_RGBA_sRGB)
+            pixelFormat = MTL::PixelFormatRGBA8Unorm_sRGB;
+    #endif
+#endif
+    
     if (pixelFormat == MTL::PixelFormatInvalid)
         cemuLog_log(LogType::Force, "invalid pixel format 0x{:x}, is depth: {}\n", format, isDepth);
 
