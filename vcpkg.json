@@ -11,7 +11,10 @@
       "default-features": false
     },
     "rapidjson",
-    "sdl2",
+    {
+      "name": "sdl3",
+      "default-features": false
+    },
     "boost-tokenizer",
     "boost-container",
     "boost-program-options",
@@ -29,10 +32,6 @@
       "name": "fmt",
       "version>=": "12.1.0"
     },
-    {
-      "name": "hidapi",
-      "platform": "!ios"
-    },
     "libpng",
     "glm",
     {
@@ -42,7 +41,11 @@
     "zstd",
     {
       "name": "wxwidgets",
-      "platform": "!ios"
+      "platform": "!ios",
+      "default-features": false,
+      "features": [
+        "debug-support"
+      ]
     },
     "openssl",
     {
@@ -76,8 +79,8 @@
       "version": "15.1.0"
     },
     {
-      "name": "sdl2",
-      "version": "2.32.10"
+      "name": "sdl3",
+      "version": "3.4.2"
     },
     {
       "name": "wxwidgets",

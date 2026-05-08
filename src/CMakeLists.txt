@@ -248,7 +248,7 @@ if (NOT IS_IOS)
 		CemuGui
 		CemuInput
 		CemuUtil
-		SDL2::SDL2
+		SDL3::SDL3
 	)
 
 	if(UNIX AND NOT APPLE)
