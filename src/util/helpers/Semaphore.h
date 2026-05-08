@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <mutex>
 #include <condition_variable>
 
@@ -52,23 +53,23 @@ public:
 	void reset()
 	{
 		std::lock_guard lock(m_mutex);
-		m_count = 0;
+		m_count.store(0, std::memory_order_relaxed);
+		m_condition.notify_all();
 	}
 
 	void increment()
 	{
 		std::lock_guard lock(m_mutex);
-		++m_count;
-		if (m_count == 1)
+		if (m_count.fetch_add(1, std::memory_order_relaxed) == 0)
 			m_condition.notify_all();
 	}
 
 	void decrement()
 	{
 		std::lock_guard lock(m_mutex);
-		--m_count;
-		cemu_assert_debug(m_count >= 0);
-		if (m_count == 0)
+		sint64 prev = m_count.fetch_sub(1, std::memory_order_relaxed);
+		cemu_assert_debug(prev > 0);
+		if (prev == 1)
 			m_condition.notify_all();
 	}
 
@@ -77,9 +78,9 @@ public:
 	void decrementWithWait()
 	{
 		std::unique_lock lock(m_mutex);
-		while (m_count == 0)
+		while (m_count.load(std::memory_order_relaxed) == 0)
 			m_condition.wait(lock);
-		m_count--;
+		m_count.fetch_sub(1, std::memory_order_relaxed);
 	}
 
 	// decrement only if non-zero
@@ -88,39 +89,38 @@ public:
 	bool decrementWithWaitAndTimeout(uint32 ms)
 	{
 		std::unique_lock lock(m_mutex);
-		if (m_count == 0)
-		{
+		if (m_count.load(std::memory_order_relaxed) == 0)
 			m_condition.wait_for(lock, std::chrono::milliseconds(ms));
-		}
-		if (m_count == 0)
+		if (m_count.load(std::memory_order_relaxed) == 0)
 			return false;
-		m_count--;
+		m_count.fetch_sub(1, std::memory_order_relaxed);
 		return true;
 	}
 
 	void waitUntilZero()
 	{
 		std::unique_lock lock(m_mutex);
-		while (m_count != 0)
+		while (m_count.load(std::memory_order_relaxed) != 0)
 			m_condition.wait(lock);
 	}
 
 	void waitUntilNonZero()
 	{
 		std::unique_lock lock(m_mutex);
-		while (m_count == 0)
+		while (m_count.load(std::memory_order_relaxed) == 0)
 			m_condition.wait(lock);
 	}
 
+	// fast lock-free hint; callers must not assume the value is still valid after return
 	bool isZero() const
 	{
-		return m_count == 0;
+		return m_count.load(std::memory_order_relaxed) == 0;
 	}
 
 private:
-	std::mutex m_mutex;
+	mutable std::mutex m_mutex;
 	std::condition_variable m_condition;
-	sint64 m_count = 0;
+	std::atomic<sint64> m_count{0};
 };
 
 template<typename T>
