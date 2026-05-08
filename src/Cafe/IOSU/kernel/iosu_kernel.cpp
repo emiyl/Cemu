@@ -488,7 +488,11 @@ namespace iosu
 		{
 			std::unique_lock _lock(sInternalMutex);
 			uint32 index = devHandle & 0xFFF;
-			cemu_assert(index < MAX_NUM_ACTIVE_DEV_HANDLES);
+			if (index >= MAX_NUM_ACTIVE_DEV_HANDLES)
+			{
+				cemuLog_log(LogType::Force, "_IPCDestroyResourceHandle(): Invalid device handle 0x{:x} (index {}, max {})", devHandle, index, MAX_NUM_ACTIVE_DEV_HANDLES);
+				return IOS_ERROR_INVALID;
+			}
 			if (!sActiveDeviceHandles[index].isSet)
 			{
 				cemuLog_log(LogType::Force, "_IPCDispatchToResourceManager(): Resource manager destroyed before all IPC commands were processed");
@@ -526,7 +530,11 @@ namespace iosu
 		{
 			std::unique_lock _lock(sInternalMutex);
 			uint32 index = devHandle & 0xFFF;
-			cemu_assert(index < MAX_NUM_ACTIVE_DEV_HANDLES);
+			if (index >= MAX_NUM_ACTIVE_DEV_HANDLES)
+			{
+				cemuLog_log(LogType::Force, "_IPCAssignDispatchTargetHandle(): Invalid device handle 0x{:x} (index {}, max {})", devHandle, index, MAX_NUM_ACTIVE_DEV_HANDLES);
+				return IOS_ERROR_INVALID;
+			}
 			if (!sActiveDeviceHandles[index].isSet)
 			{
 				cemuLog_log(LogType::Force, "_IPCDispatchToResourceManager(): Resource manager destroyed before all IPC commands were processed");
@@ -548,7 +556,11 @@ namespace iosu
 		{
 			std::unique_lock _lock(sInternalMutex);
 			uint32 index = devHandle & 0xFFF;
-			cemu_assert(index < MAX_NUM_ACTIVE_DEV_HANDLES);
+			if (index >= MAX_NUM_ACTIVE_DEV_HANDLES)
+			{
+				cemuLog_log(LogType::Force, "_IPCDispatchToResourceManager(): Invalid device handle 0x{:x} (index {}, max {})", devHandle, index, MAX_NUM_ACTIVE_DEV_HANDLES);
+				return IOS_ERROR_INVALID;
+			}
 			if (!sActiveDeviceHandles[index].isSet)
 			{
 				cemuLog_log(LogType::Force, "_IPCDispatchToResourceManager(): Resource manager destroyed before all IPC commands were processed");
