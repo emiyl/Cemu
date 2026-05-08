@@ -832,7 +832,13 @@ namespace coreinit
 
 	uint32 OSDriver_Register(uint32 moduleHandle, sint32 priority, OSDriverInterface* driverCallbacks, sint32 driverId, uint32be* outUkn1, uint32be* outUkn2, uint32be* outUkn3)
 	{
-		cemuLog_logDebug(LogType::Force, "OSDriver_Register stubbed");
+		if (outUkn1)
+			*outUkn1 = 0;
+		if (outUkn2)
+			*outUkn2 = 0;
+		if (outUkn3)
+			*outUkn3 = 0;
+		cemuLog_logDebug(LogType::Force, "OSDriver_Register stubbed (module=0x{:08x}, prio={}, driverId={})", moduleHandle, priority, driverId);
 		return 0;
 	}
 
