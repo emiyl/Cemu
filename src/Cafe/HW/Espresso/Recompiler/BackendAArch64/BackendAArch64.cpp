@@ -1670,26 +1670,27 @@ void AArch64GenContext_t::leaveRecompilerCode()
 	ret();
 }
 
-bool initializedInterfaceFunctions = false;
-AArch64GenContext_t enterRecompilerCode_ctx{};
+static AArch64GenContext_t* enterRecompilerCode_ctx = nullptr;
+static AArch64GenContext_t* leaveRecompilerCode_unvisited_ctx = nullptr;
+static AArch64GenContext_t* leaveRecompilerCode_visited_ctx = nullptr;
 
-AArch64GenContext_t leaveRecompilerCode_unvisited_ctx{};
-AArch64GenContext_t leaveRecompilerCode_visited_ctx{};
 void PPCRecompilerAArch64Gen_generateRecompilerInterfaceFunctions()
 {
-	if (initializedInterfaceFunctions)
+	if (enterRecompilerCode_ctx)
 		return;
-	initializedInterfaceFunctions = true;
 
-	enterRecompilerCode_ctx.enterRecompilerCode();
-	enterRecompilerCode_ctx.readyRE();
-	PPCRecompiler_enterRecompilerCode = enterRecompilerCode_ctx.getCode<decltype(PPCRecompiler_enterRecompilerCode)>();
+	enterRecompilerCode_ctx = new AArch64GenContext_t{};
+	enterRecompilerCode_ctx->enterRecompilerCode();
+	enterRecompilerCode_ctx->readyRE();
+	PPCRecompiler_enterRecompilerCode = enterRecompilerCode_ctx->getCode<decltype(PPCRecompiler_enterRecompilerCode)>();
 
-	leaveRecompilerCode_unvisited_ctx.leaveRecompilerCode();
-	leaveRecompilerCode_unvisited_ctx.readyRE();
-	PPCRecompiler_leaveRecompilerCode_unvisited = leaveRecompilerCode_unvisited_ctx.getCode<decltype(PPCRecompiler_leaveRecompilerCode_unvisited)>();
+	leaveRecompilerCode_unvisited_ctx = new AArch64GenContext_t{};
+	leaveRecompilerCode_unvisited_ctx->leaveRecompilerCode();
+	leaveRecompilerCode_unvisited_ctx->readyRE();
+	PPCRecompiler_leaveRecompilerCode_unvisited = leaveRecompilerCode_unvisited_ctx->getCode<decltype(PPCRecompiler_leaveRecompilerCode_unvisited)>();
 
-	leaveRecompilerCode_visited_ctx.leaveRecompilerCode();
-	leaveRecompilerCode_visited_ctx.readyRE();
-	PPCRecompiler_leaveRecompilerCode_visited = leaveRecompilerCode_visited_ctx.getCode<decltype(PPCRecompiler_leaveRecompilerCode_visited)>();
+	leaveRecompilerCode_visited_ctx = new AArch64GenContext_t{};
+	leaveRecompilerCode_visited_ctx->leaveRecompilerCode();
+	leaveRecompilerCode_visited_ctx->readyRE();
+	PPCRecompiler_leaveRecompilerCode_visited = leaveRecompilerCode_visited_ctx->getCode<decltype(PPCRecompiler_leaveRecompilerCode_visited)>();
 }
