@@ -15,12 +15,22 @@
 
 #include "util/helpers/helpers.h"
 
+#if defined(__APPLE__)
+#include <TargetConditionals.h>
+#endif
+
 #ifdef __arm64__
 #if defined(__clang__)
 #include <arm_acle.h>
 #elif defined(_MSC_VER)
 #include <intrin.h>
 #endif
+#endif
+
+#if defined(__arm64__) && !(defined(TARGET_OS_IOS) && TARGET_OS_IOS)
+    #define CEMU_ARM64_FIBER_ABI 1
+#else
+    #define CEMU_ARM64_FIBER_ABI 0
 #endif
 
 namespace {
@@ -52,7 +62,7 @@ void nnNfp_update();
 
 namespace coreinit
 {
-#ifdef __arm64__
+#if CEMU_ARM64_FIBER_ABI
 	void __OSFiberThreadEntry(uint32, uint32);
 #else
 	void __OSFiberThreadEntry(void* thread);
@@ -1338,7 +1348,7 @@ namespace coreinit
 		__OSThreadStartTimeslice(hostThread->m_thread, &hostThread->ppcInstance);
 	}
 
-#ifdef __arm64__
+#if CEMU_ARM64_FIBER_ABI
 	void __OSFiberThreadEntry(uint32 _high, uint32 _low)
 	{
 		uint64 _thread = (uint64) _high << 32 | _low;
@@ -1417,9 +1427,23 @@ namespace coreinit
 		// create scheduler idle fiber and switch to it
 		g_idleLoopFiber[t_assignedCoreIndex] = new Fiber(__OSThreadCoreIdle, nullptr, nullptr);
 		cemu_assert_debug(PPCInterpreter_getCurrentInstance() == nullptr);
+		bool loggedUnexpectedReturn = false;
 		__OSLockScheduler();
-		Fiber::Switch(*g_idleLoopFiber[t_assignedCoreIndex]);
+		while (sSchedulerActive.load(std::memory_order::relaxed))
+		{
+			Fiber::Switch(*g_idleLoopFiber[t_assignedCoreIndex]);
+			if (!loggedUnexpectedReturn)
+			{
+				cemuLog_log(LogType::Force, "OSSchedulerCoreEmulationThread: idle fiber returned unexpectedly while scheduler is active (core={})", t_assignedCoreIndex);
+				loggedUnexpectedReturn = true;
+			}
+			while (__OSHasSchedulerLock())
+				__OSUnlockScheduler();
+			__OSLockScheduler();
+		}
 		// returned from scheduler loop, exit thread
+		while (__OSHasSchedulerLock())
+			__OSUnlockScheduler();
 		cemu_assert_debug(!__OSHasSchedulerLock());
 	}
 
