@@ -5,9 +5,6 @@
 #include "input/emulated/ClassicController.h"
 #include "input/emulated/WiimoteController.h"
 
-#if HAS_SDL
-#include "input/api/SDL/SDLController.h"
-#endif
 #include "input/api/Keyboard/KeyboardController.h"
 #include "input/api/DSU/DSUController.h"
 #include "input/api/GameCube/GameCubeController.h"
@@ -24,6 +21,10 @@
 #if HAS_IOS_TOUCH
 #include "input/api/iOS/IOSTouchController.h"
 #include "input/api/iOS/IOSTouchControllerProvider.h"
+#endif
+
+#ifdef HAS_SDL
+#include "input/api/SDL/SDLController.h"
 #endif
 
 ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::string_view uuid,
@@ -66,7 +67,7 @@ ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::strin
 			return std::make_shared<XInputController>(index);
 		}
 #endif
-#if HAS_SDL
+#ifdef HAS_SDL
 	case InputAPI::SDLController:
 		{
 			// diid_guid
@@ -148,7 +149,7 @@ ControllerProviderPtr ControllerFactory::CreateControllerProvider(InputAPI::Type
 	case InputAPI::Keyboard:
 		return std::make_shared<KeyboardControllerProvider>();
 #endif
-#if HAS_SDL
+#ifdef HAS_SDL
 	case InputAPI::SDLController:
 		return std::make_shared<SDLControllerProvider>();
 #endif

@@ -212,13 +212,6 @@ else()
 endif()
 
 if (NOT IS_IOS)
-	set_target_properties(CemuBin PROPERTIES
-		# multi-configuration generators will add a config subdirectory to RUNTIME_OUTPUT_DIRECTORY if no generator expression is used
-		# to get the same behavior everywhere we append an empty generator expression
-		RUNTIME_OUTPUT_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/../bin/$<1:>"
-		OUTPUT_NAME "${OUTPUT_NAME}"
-	)
-
 	target_link_libraries(CemuBin PRIVATE
 		CemuAudio
 		CemuCafe
@@ -228,8 +221,11 @@ if (NOT IS_IOS)
 		CemuGui
 		CemuInput
 		CemuUtil
-		SDL3::SDL3
 	)
+
+	if(ENABLE_SDL)
+		target_link_libraries(CemuBin PRIVATE SDL3::SDL3)
+	endif()
 
 	if(UNIX AND NOT APPLE)
 		# due to nasm output some linkers will make stack executable

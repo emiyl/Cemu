@@ -99,6 +99,16 @@ if (SUPPORTS_WIIMOTE)
 endif ()
 
 
+if(ENABLE_SDL)
+	target_sources(CemuInput PRIVATE
+		api/SDL/SDLController.cpp
+		api/SDL/SDLControllerProvider.cpp
+		api/SDL/SDLController.h
+		api/SDL/SDLControllerProvider.h
+	)
+	target_link_libraries(CemuInput PRIVATE	SDL3::SDL3)
+endif()
+
 target_include_directories(CemuInput PUBLIC "../")
 
 target_link_libraries(CemuInput PRIVATE
