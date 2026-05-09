@@ -422,6 +422,15 @@ namespace coreinit
 		return 0;
 	}
 
+	uint32 MCP_DemoLaunchGetRemainder(uint32 mcpHandle, uint64 titleId, uint32be* outRemainder)
+	{
+		// stub to always return 99 uses remaining for game demos.
+		// used by drmapp.rpl to determine remaining uses for game demos
+		if (outRemainder)
+			*outRemainder = 99;
+		return 0;
+	}
+
 	void InitializeMCP()
 	{
 		osLib_addFunction("coreinit", "MCP_Open", coreinitExport_MCP_Open);
@@ -451,6 +460,7 @@ namespace coreinit
 		cafeExportRegister("coreinit", MCP_GetEcoSettings, LogType::Placeholder);
 
 		cafeExportRegister("coreinit", MCP_GetTitleId, LogType::Placeholder);
+		cafeExportRegister("coreinit", MCP_DemoLaunchGetRemainder, LogType::Placeholder);
 	}
 
 }
