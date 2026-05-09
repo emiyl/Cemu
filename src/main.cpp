@@ -73,7 +73,8 @@ void _putenvSafe(const char* c)
 #ifdef ENABLE_OPENGL
 void reconfigureGLDrivers()
 {
-	// reconfigure GL drivers to store 
+#ifdef ENABLE_OPENGL
+	// reconfigure GL drivers to store
 	const fs::path nvCacheDir = ActiveSettings::GetCachePath("shaderCache/driver/nvidia/");
 
 	std::error_code err;
@@ -89,15 +90,17 @@ void reconfigureGLDrivers()
     _putenvSafe(nvCacheDirEnvOption.c_str());
 #endif
     _putenvSafe("__GL_SHADER_DISK_CACHE_SKIP_CLEANUP=1");
-
+#endif
 }
 #endif
 
 #ifdef ENABLE_VULKAN
 void reconfigureVkDrivers()
 {
+#ifdef ENABLE_VULKAN
     _putenvSafe("DISABLE_LAYER_AMD_SWITCHABLE_GRAPHICS_1=1");
     _putenvSafe("DISABLE_VK_LAYER_VALVE_steam_fossilize_1=1");
+#endif
 }
 #endif
 

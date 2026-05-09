@@ -47,10 +47,6 @@ elseif(UNIX)
 	)
 endif()
 
-if (ENABLE_VULKAN)
-	add_compile_definitions(VK_NO_PROTOTYPES)
-endif()
-
 set(CMAKE_INCLUDE_CURRENT_DIR ON)
 
 # on msvc we can reuse the PCH from CemuCommon, on other platforms it's not straight forward to reuse the PCH so we opt out of it
@@ -133,12 +129,6 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 			COMMAND ${CMAKE_COMMAND} ARGS -E copy_directory "${CMAKE_SOURCE_DIR}/bin/${folder}" "$<TARGET_BUNDLE_DIR:CemuBin>/Contents/SharedSupport/${folder}")
 	endforeach(folder)
 
-	set(UPDATE_SH_PATH "${CMAKE_SOURCE_DIR}/src/resource/update.sh")
-
-	set(APP_BUNDLE_DIR "$<TARGET_BUNDLE_DIR:CemuBin>")
-	set(FRAMEWORKS_DIR "${APP_BUNDLE_DIR}/Contents/Frameworks")
-	set(RESOURCES_DIR  "${APP_BUNDLE_DIR}/Contents/Resources")
-
 	if (ENABLE_VULKAN)
 		if (EXISTS "/usr/local/lib/libMoltenVK.dylib")
 			set(MOLTENVK_PATH "/usr/local/lib/libMoltenVK.dylib")
@@ -147,12 +137,7 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 		else()
 			message(FATAL_ERROR "failed to find libMoltenVK.dylib")
 		endif ()
-    
-		add_custom_command(TARGET CemuBin POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy 
-			"${MOLTENVK_PATH}"
-			"${FRAMEWORKS_DIR}/libMoltenVK.dylib")
-  endif()
+  	endif()
   
 	if (ENABLE_LIBUSB)
 		if(CMAKE_BUILD_TYPE STREQUAL "Debug")
@@ -160,25 +145,20 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 		else()
 		    set(LIBUSB_PATH "${CMAKE_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/libusb-1.0.0.dylib")
 		endif()
-		add_custom_command(TARGET CemuBin POST_BUILD
-		COMMAND ${CMAKE_COMMAND} -E copy
-			"${LIBUSB_PATH}"
-			"${FRAMEWORKS_DIR}/libusb-1.0.0.dylib"
-		)
 	endif()
 
-	if (EXISTS "/usr/local/lib/libMoltenVK.dylib")
-		set(MOLTENVK_PATH "/usr/local/lib/libMoltenVK.dylib")
-	elseif (EXISTS "/opt/homebrew/lib/libMoltenVK.dylib")
-		set(MOLTENVK_PATH "/opt/homebrew/lib/libMoltenVK.dylib")
-	else()
-		message(FATAL_ERROR "failed to find libMoltenVK.dylib")
-	endif ()
 	set(UPDATE_SH_PATH "${CMAKE_SOURCE_DIR}/src/resource/update.sh")
-
 	set(APP_BUNDLE_DIR "$<TARGET_BUNDLE_DIR:CemuBin>")
 	set(FRAMEWORKS_DIR "${APP_BUNDLE_DIR}/Contents/Frameworks")
 	set(RESOURCES_DIR  "${APP_BUNDLE_DIR}/Contents/Resources")
+
+	if (ENABLE_VULKAN)
+		add_custom_command(TARGET CemuBin POST_BUILD
+			COMMAND ${CMAKE_COMMAND} -E copy 
+				"${MOLTENVK_PATH}"
+				"${FRAMEWORKS_DIR}/libMoltenVK.dylib"
+		)
+	endif()
 
 	add_custom_command(TARGET CemuBin POST_BUILD
 		COMMAND ${CMAKE_COMMAND} -E copy
@@ -202,12 +182,12 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 	)
 
 	if (ENABLE_LIBUSB)
-	  add_custom_command(TARGET CemuBin POST_BUILD
-		  COMMAND install_name_tool
-			  -change @rpath/libusb-1.0.0.dylib
-				  	@executable_path/../Frameworks/libusb-1.0.0.dylib
-					  "$<TARGET_FILE:CemuBin>"
-	  )
+		add_custom_command(TARGET CemuBin POST_BUILD
+		COMMAND install_name_tool
+			-change @rpath/libusb-1.0.0.dylib
+				@executable_path/../Frameworks/libusb-1.0.0.dylib
+				"$<TARGET_FILE:CemuBin>"
+		)
 	endif()
   
 else()

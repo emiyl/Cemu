@@ -73,7 +73,16 @@ enum GraphicAPI
 	kOpenGL = 0,
 	kVulkan,
 	kMetal,
+	COUNT
 };
+
+#if defined(ENABLE_VULKAN)
+constexpr GraphicAPI kDefaultGraphicsAPI = kVulkan;
+#elif defined(ENABLE_METAL)
+constexpr GraphicAPI kDefaultGraphicsAPI = kMetal;
+#elif defined(ENABLE_OPENGL)
+constexpr GraphicAPI kDefaultGraphicsAPI = kOpenGL;
+#endif
 
 enum AudioChannels
 {
@@ -432,13 +441,7 @@ struct CemuConfig
 	ConfigValueBounds<CafeConsoleLanguage> console_language{ CafeConsoleLanguage::EN };
 
 	// graphics
-#if defined(ENABLE_VULKAN)
-	ConfigValue<GraphicAPI> graphic_api{ kVulkan };
-#elif defined(ENABLE_METAL)
-	ConfigValue<GraphicAPI> graphic_api{ kMetal };
-#elif defined(ENABLE_OPENGL)
-	ConfigValue<GraphicAPI> graphic_api{ kOpenGL };
-#endif
+	ConfigValue<GraphicAPI> graphic_api{ kDefaultGraphicsAPI };
 	std::array<uint8, 16> legacy_graphic_device_uuid{}; // placeholder option for backwards compatibility with settings from 2.6 and before (renamed to "vkDevice")
 	std::array<uint8, 16> vk_graphic_device_uuid;
 	uint64 mtl_graphic_device_uuid{ 0 };

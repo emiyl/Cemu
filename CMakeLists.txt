@@ -251,6 +251,7 @@ endif()
 if (ENABLE_VULKAN)
 	include_directories("dependencies/Vulkan-Headers/include")
 	add_compile_definitions(ENABLE_VULKAN)
+	add_compile_definitions(VK_NO_PROTOTYPES)
 endif()
 
 if (ENABLE_OPENGL)
@@ -260,7 +261,7 @@ endif()
 
 if (ENABLE_METAL)
     include_directories(${CMAKE_SOURCE_DIR}/dependencies/metal-cpp)
-
+	
 	add_compile_definitions($<$<COMPILE_LANGUAGE:C,CXX,OBJC,OBJCXX>:ENABLE_METAL>)
 endif()
 
