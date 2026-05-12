@@ -8,9 +8,10 @@
 + (id)makeHostingController;
 @end
 
+#include "Common/precompiled.h"
+
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
 #include "Cafe/HW/Latte/Renderer/Renderer.h"
-#include "Common/precompiled.h"
 #include "gui/interface/WindowSystem.h"
 
 static UIView *s_renderView = nil;
