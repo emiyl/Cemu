@@ -106,7 +106,13 @@ bool cemuLog_log(LogType type, const T* format, TArgs&&... args)
 {
 	if (!cemuLog_isLoggingEnabled(type))
 		return false;
+
+	// log to xcode console if logging is enabled for this type, to make it easier to debug on macOS
+#ifdef __APPLE__
 	auto format_str = std::basic_string<T>(format);
+	auto text = fmt::vformat(format_str, fmt::make_format_args(args...));
+	fprintf(stderr, "%s\n", text.c_str());
+#endif
 	return cemuLog_log(type, format_str, std::forward<TArgs>(args)...);
 }
 
