@@ -73,6 +73,17 @@ if(WIN32)
 	)
 endif()
 
+if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+	target_sources(CemuInput PRIVATE
+		api/iOS/IOSTouchController.cpp
+		api/iOS/IOSTouchController.h
+		api/iOS/IOSTouchControllerProvider.cpp
+		api/iOS/IOSTouchControllerProvider.h
+		api/iOS/IOSTouchInput_Bridge.cpp
+		api/iOS/IOSTouchInput_Bridge.h
+	)
+endif()
+
 if (SUPPORTS_WIIMOTE)
 	target_compile_definitions(CemuInput PUBLIC SUPPORTS_WIIMOTE)
 	target_sources(CemuInput PRIVATE

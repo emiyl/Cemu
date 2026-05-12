@@ -5,6 +5,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     ../../main.cpp
     ios/CemuIosApp.swift
     ios/IosBackends.swift
+    ios/OnScreenGamepad.swift
     ios/LaunchBridge.cpp
     ios/WindowSystemIOS.cpp
     ios/WindowSystemIOS_GameLoad.mm
@@ -41,6 +42,7 @@ if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
     XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
     XCODE_ATTRIBUTE_CODE_SIGNING_ALLOWED "YES"
     XCODE_ATTRIBUTE_CODE_SIGN_ENTITLEMENTS "${CMAKE_SOURCE_DIR}/src/resource/cemu.ios.entitlements"
+    XCODE_ATTRIBUTE_SWIFT_OBJC_BRIDGING_HEADER "${CMAKE_CURRENT_SOURCE_DIR}/ios/Cemu-iOS-Bridging-Header.h"
   )
 
   target_compile_definitions(CemuSwiftUiIosApp PRIVATE VK_NO_PROTOTYPES)

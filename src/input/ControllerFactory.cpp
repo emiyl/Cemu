@@ -21,6 +21,11 @@
 #include "input/api/Wiimote/NativeWiimoteController.h"
 #endif
 
+#if HAS_IOS_TOUCH
+#include "input/api/iOS/IOSTouchController.h"
+#include "input/api/iOS/IOSTouchControllerProvider.h"
+#endif
+
 ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::string_view uuid,
                                                   std::string_view display_name)
 {
@@ -104,6 +109,10 @@ ControllerPtr ControllerFactory::CreateController(InputAPI::Type api, std::strin
 			return std::make_shared<NativeWiimoteController>(index);
 		}
 #endif
+#if HAS_IOS_TOUCH
+	case InputAPI::iOSTouch:
+		return std::make_shared<IOSTouchController>();
+#endif
 	default:
 		throw std::invalid_argument(fmt::format("unhandled controller api: {}", api));
 	}
@@ -174,6 +183,10 @@ ControllerProviderPtr ControllerFactory::CreateControllerProvider(InputAPI::Type
 #if HAS_WIIMOTE
 	case InputAPI::Wiimote:
 		return std::make_shared<WiimoteControllerProvider>();
+#endif
+#if HAS_IOS_TOUCH
+	case InputAPI::iOSTouch:
+		return IOSTouchControllerProvider::GetInstance();
 #endif
 	default:
 		cemu_assert_debug(false);

@@ -17,6 +17,8 @@ namespace InputAPI
 		WGIGamepad,
 		WGIRawController,
 
+		iOSTouch,
+
 		MAX
 	};
 
@@ -40,6 +42,8 @@ namespace InputAPI
 			return "WGIGamepad";
 		case WGIRawController:
 			return "WGIRawController";
+		case iOSTouch:
+			return "iOSTouch";
 		case SDLController:
 			return "SDLController";
 		default:
@@ -67,7 +71,9 @@ namespace InputAPI
 			return SDLController;
 		else if (str == "DSU") // legacy
 			return DSUClient;
-		
+		else if (str == to_string(iOSTouch))
+			return iOSTouch;
+
 		//else if (str == "WGIGamepad")
 		//	return WGIGamepad;
 		//

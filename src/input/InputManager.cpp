@@ -1,6 +1,10 @@
 #include "input/InputManager.h"
 #include "config/ActiveSettings.h"
 #include "input/ControllerFactory.h"
+
+#if TARGET_OS_IOS
+#include "input/api/iOS/IOSTouchControllerProvider.h"
+#endif
 #include <boost/property_tree/ini_parser.hpp>
 #include <pugixml.hpp>
 #include "Cafe/GameProfile/GameProfile.h"
@@ -45,6 +49,9 @@ InputManager::InputManager()
 #endif
 #if HAS_WIIMOTE
 	create_provider<WiimoteControllerProvider>();
+#endif
+#if TARGET_OS_IOS
+	create_provider<IOSTouchControllerProvider>();
 #endif
 
 	m_update_thread_shutdown.store(false);
