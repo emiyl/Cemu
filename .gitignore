@@ -16,8 +16,7 @@
 .vscode
 .idea/
 
-build/
-build-ios/
+build*/
 cmake-build-*/
 out/
 .cache/
