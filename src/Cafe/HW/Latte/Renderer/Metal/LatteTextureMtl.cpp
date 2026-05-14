@@ -8,9 +8,7 @@ LatteTextureMtl::LatteTextureMtl(class MetalRenderer* mtlRenderer, Latte::E_DIM 
 	: LatteTexture(dim, physAddress, physMipAddress, format, width, height, depth, pitch, mipLevels, swizzle, tileMode, isDepth), m_mtlr(mtlRenderer)
 {
     NS_STACK_SCOPED MTL::TextureDescriptor* desc = MTL::TextureDescriptor::alloc()->init();
-    // On Apple GPUs, use Shared storage mode to allow CPU access for texture uploads via replaceRegion
-    // This is necessary because copyFromBuffer has strict alignment requirements that are difficult to meet
-    desc->setStorageMode(mtlRenderer->IsAppleGPU() ? MTL::StorageModeShared : MTL::StorageModePrivate);
+    desc->setStorageMode(MTL::StorageModePrivate);
     //desc->setCpuCacheMode(MTL::CPUCacheModeWriteCombined);
 
 	sint32 effectiveBaseWidth = width;
