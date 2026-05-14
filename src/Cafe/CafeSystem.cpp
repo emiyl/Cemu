@@ -566,7 +566,11 @@ namespace CafeSystem
 		#else
 		platform = "Unknown BSD";
 		#endif
+		#elif defined(TARGET_OS_IOS) && TARGET_OS_IOS
+		platform = "iOS";
 		#endif
+		if (!platform)
+			platform = "Unknown";
 		cemuLog_log(LogType::Force, "Platform: {}", platform);
 	}
 
