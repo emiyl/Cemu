@@ -760,24 +760,44 @@ void MetalRenderer::texture_loadSlice(LatteTexture* hostTexture, sint32 width, s
     size_t bytesPerRow = GetMtlTextureBytesPerRow(textureMtl->format, textureMtl->isDepth, width);
     // No need to set bytesPerImage for 3D textures, since we always load just one slice
     //size_t bytesPerImage = GetMtlTextureBytesPerImage(textureMtl->GetFormat(), textureMtl->isDepth, height, bytesPerRow);
-    //if (m_isAppleGPU)
-    //{
-    //    textureMtl->GetTexture()->replaceRegion(MTL::Region(0, 0, offsetZ, width, height, 1), mipIndex, sliceIndex, pixelData, bytesPerRow, 0);
-    //}
-    //else
-    //{
+    
     auto blitCommandEncoder = GetBlitCommandEncoder();
 
     // Allocate a temporary buffer
     auto& bufferAllocator = m_memoryManager->GetStagingAllocator();
-    auto allocation = bufferAllocator.AllocateBufferMemory(compressedImageSize, 1);
-    memcpy(allocation.memPtr, pixelData, compressedImageSize);
-    bufferAllocator.FlushReservation(allocation);
+    
+    if (m_isAppleGPU)
+    {
+        // On Apple GPUs, Metal requires bytesPerRow >= 512 for replaceRegion
+        size_t alignedBytesPerRow = std::max(bytesPerRow, (size_t)512);
+        size_t allocSize = alignedBytesPerRow * height;
+        auto allocation = bufferAllocator.AllocateBufferMemory(allocSize, 1);
+        
+        // Copy and pad data to match Metal's minimum 512-byte row requirement
+        size_t srcBytesPerRow = (height > 0) ? (compressedImageSize + height - 1) / height : bytesPerRow;
+        uint8* src = (uint8*)pixelData;
+        uint8* dst = (uint8*)allocation.memPtr;
+        
+        for (uint32 row = 0; row < height; ++row)
+        {
+            memcpy(dst + row * alignedBytesPerRow, src + row * srcBytesPerRow, srcBytesPerRow);
+            // Padding is automatically zero-initialized
+        }
+        
+        bufferAllocator.FlushReservation(allocation);
+        textureMtl->GetTexture()->replaceRegion(MTL::Region(0, 0, offsetZ, width, height, 1), mipIndex, sliceIndex, allocation.memPtr, alignedBytesPerRow, 0);
+    }
+    else
+    {
+        // For non-Apple GPUs, use original data layout
+        auto allocation = bufferAllocator.AllocateBufferMemory(compressedImageSize, 1);
+        memcpy(allocation.memPtr, pixelData, compressedImageSize);
+        bufferAllocator.FlushReservation(allocation);
 
-    // TODO: specify blit options when copying to a depth stencil texture?
-    // Copy the data from the temporary buffer to the texture
-    blitCommandEncoder->copyFromBuffer(allocation.mtlBuffer, allocation.bufferOffset, bytesPerRow, 0, MTL::Size(width, height, 1), textureMtl->GetTexture(), sliceIndex, mipIndex, MTL::Origin(0, 0, offsetZ));
-    //}
+        // TODO: specify blit options when copying to a depth stencil texture?
+        // Copy the data from the temporary buffer to the texture
+        blitCommandEncoder->copyFromBuffer(allocation.mtlBuffer, allocation.bufferOffset, bytesPerRow, 0, MTL::Size(width, height, 1), textureMtl->GetTexture(), sliceIndex, mipIndex, MTL::Origin(0, 0, offsetZ));
+    }
 }
 
 void MetalRenderer::texture_clearColorSlice(LatteTexture* hostTexture, sint32 sliceIndex, sint32 mipIndex, float r, float g, float b, float a)
