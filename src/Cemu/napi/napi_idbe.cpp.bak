@@ -2,7 +2,9 @@
 #include "napi.h"
 #include "napi_helper.h"
 
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "pugixml.hpp"
 #include "Cafe/IOSU/legacy/iosu_crypto.h"
 

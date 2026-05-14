@@ -15,7 +15,9 @@
 #include "Cafe/OS/libs/nn_boss/nn_boss.h"
 #include "Cafe/OS/libs/nn_sl/nn_sl.h"
 #include "Cafe/OS/libs/nn_fp/nn_fp.h"
+#ifdef ENABLE_CURL
 #include "Cafe/OS/libs/nn_olv/nn_olv.h"
+#endif
 #include "Cafe/OS/libs/nn_idbe/nn_idbe.h"
 #include "Cafe/OS/libs/nn_save/nn_save.h"
 #include "Cafe/OS/libs/erreula/erreula.h"

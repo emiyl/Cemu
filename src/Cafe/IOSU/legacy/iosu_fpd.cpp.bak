@@ -336,6 +336,7 @@ namespace iosu
 		static const auto FPResult_RequestFailed = BUILD_NN_RESULT(NN_RESULT_LEVEL_FATAL, NN_RESULT_MODULE_NN_FP, 0); // figure out proper error code
 		static const auto FPResult_Aborted = BUILD_NN_RESULT(NN_RESULT_LEVEL_STATUS, NN_RESULT_MODULE_NN_FP, 0x3480);
 
+#ifdef ENABLE_CURL
 		class FPDService : public iosu::nn::IPCSimpleService
 		{
 
@@ -1524,6 +1525,17 @@ namespace iosu
 				gFPDService.Stop();
 			}
 		}sIOSUModuleNNFPD;
+#else
+		class : public ::IOSUModule
+		{
+			void TitleStart() override
+			{
+			}
+			void TitleStop() override
+			{
+			}
+		}sIOSUModuleNNFPD;
+#endif
 
 		IOSUModule* GetModule()
 		{

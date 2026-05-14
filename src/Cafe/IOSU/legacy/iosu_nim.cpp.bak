@@ -3,7 +3,9 @@
 #include "iosu_act.h"
 #include "iosu_mcp.h"
 #include "util/crypto/aes128.h"
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "openssl/bn.h"
 #include "openssl/x509.h"
 #include "openssl/ssl.h"
@@ -57,6 +59,7 @@ namespace iosu
 		bool nim_getLatestVersion()
 		{
 			g_nim.latestVersion = -1;
+			#ifdef ENABLE_CURL
 			NAPI::AuthInfo authInfo;
 			authInfo.country = NCrypto::GetCountryAsString(Account::GetCurrentAccount().GetCountry());
 			authInfo.region = NCrypto::SEEPROM_GetRegion();
@@ -71,12 +74,15 @@ namespace iosu
 			g_nim.latestVersion = (sint32)versionListVersionResult.version;
 			strcpy(g_nim.fqdn, versionListVersionResult.fqdnURL.c_str());
 			return true;
+#else
+			return false;
+#endif
 		}
 
 		bool nim_getVersionList()
 		{
 			g_nim.titlesLatestVersion.clear();
-
+			#ifdef ENABLE_CURL
 			NAPI::AuthInfo authInfo;
 			authInfo.country = NCrypto::GetCountryAsString(Account::GetCurrentAccount().GetCountry());
 			authInfo.region = NCrypto::SEEPROM_GetRegion();
@@ -94,6 +100,9 @@ namespace iosu
 				g_nim.titlesLatestVersion.push_back(titleLatestVersion);
 			}
 			return true;
+#else
+			return false;
+#endif
 		}
 
 		NIMTitleLatestVersion* nim_findTitleLatestVersion(uint64 titleId)
@@ -229,6 +238,7 @@ namespace iosu
 				}
 			}
 
+#ifdef ENABLE_CURL
 			auto result = NAPI::IDBE_Request(ActiveSettings::GetNetworkService(), titleId);
 			if (!result)
 			{
@@ -241,6 +251,10 @@ namespace iosu
 			// return result
 			memcpy(idbeIconOutput, &*result, sizeof(NAPI::IDBEIconDataV0));
 			return 0;
+#else
+			memset(idbeIconOutput, 0, sizeof(NAPI::IDBEIconDataV0));
+			return 0;
+#endif
 		}
 
 		void nim_backgroundThread()

@@ -1,5 +1,7 @@
 #pragma once
 
+#ifdef ENABLE_CURL
+
 #include "Cafe/OS/libs/nn_common.h"
 #include "Cafe/OS/common/OSCommon.h"
 #include "Cemu/napi/napi_helper.h"
@@ -212,3 +214,5 @@ namespace nn
 		}
 	}
 }
+
+#endif

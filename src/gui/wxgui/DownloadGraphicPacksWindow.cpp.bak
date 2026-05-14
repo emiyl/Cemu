@@ -2,7 +2,9 @@
 #include "wxgui/DownloadGraphicPacksWindow.h"
 
 #include <filesystem>
+#ifdef ENABLE_CURL
 #include <curl/curl.h>
+#endif
 #include <zip.h>
 #include <rapidjson/document.h>
 #include <boost/algorithm/string.hpp>

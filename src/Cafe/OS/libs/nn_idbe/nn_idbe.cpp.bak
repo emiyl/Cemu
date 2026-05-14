@@ -43,6 +43,7 @@ namespace nn
 
 		void asyncDownloadIconFile(uint64 titleId, nnIdbeEncryptedIcon_t* iconOut, coreinit::OSEvent* event)
 		{
+#ifdef ENABLE_CURL
 			std::vector<uint8> idbeData = NAPI::IDBE_RequestRawEncrypted(ActiveSettings::GetNetworkService(), titleId);
 			if (idbeData.size() != sizeof(nnIdbeEncryptedIcon_t))
 			{
@@ -54,6 +55,7 @@ namespace nn
 			}
 			memcpy(iconOut, idbeData.data(), sizeof(nnIdbeEncryptedIcon_t));
 			coreinit::OSSignalEvent(event);
+#endif
 		}
 
 		void export_DownloadIconFile(PPCInterpreter_t* hCPU)

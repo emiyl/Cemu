@@ -1,7 +1,9 @@
 #include "Common/precompiled.h"
 #include "napi.h"
 
+#ifdef ENABLE_CURL
 #include "curl/curl.h"
+#endif
 #include "Cafe/IOSU/legacy/iosu_crypto.h"
 
 #include "Cemu/ncrypto/ncrypto.h"

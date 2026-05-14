@@ -27,7 +27,9 @@
 #include "OS/libs/nsysnet/nsysnet.h"
 #include "OS/libs/nn_fp/nn_fp.h"
 #include "OS/libs/nn_idbe/nn_idbe.h"
+#ifdef ENABLE_CURL
 #include "OS/libs/nn_olv/nn_olv.h"
+#endif
 #include "OS/libs/nn_idbe/nn_idbe.h"
 #include "OS/libs/nlibnss/nlibnss.h"
 #include "OS/libs/nlibcurl/nlibcurl.h"
@@ -78,10 +80,14 @@ std::span<COSModule*> GetCOSModules()
 		nn::save::GetModule(),
 		nsysnet::GetModule(),
 		nn::fp::GetModule(),
+#ifdef ENABLE_CURL
 		nn::olv::GetModule(),
+#endif
 		nn::idbe::GetModule(),
 		nlibnss::GetModule(),
+#ifdef ENABLE_CURL
 		nlibcurl::GetModule(),
+#endif
 		sysapp::GetModule(),
 		nsyshid::GetModule(),
 		nsyskbd::GetModule(),

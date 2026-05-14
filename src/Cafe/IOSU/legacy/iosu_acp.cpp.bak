@@ -777,6 +777,7 @@ namespace iosu
 			return 0;
 		}
 
+#ifdef ENABLE_CURL
 		class AcpMainService : public iosu::nn::IPCService
 		{
 		  public:
@@ -804,6 +805,17 @@ namespace iosu
 				gACPMainService.Stop();
 			}
 		}sIOSUModuleNNACP;
+#else
+		class : public ::IOSUModule
+		{
+			void TitleStart() override
+			{
+			}
+			void TitleStop() override
+			{
+			}
+		}sIOSUModuleNNACP;
+#endif
 
 		IOSUModule* GetModule()
 		{

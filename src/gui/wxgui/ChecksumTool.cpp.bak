@@ -8,7 +8,9 @@
 #include "Cafe/Filesystem/WUD/wud.h"
 
 #include <zip.h>
+#ifdef ENABLE_CURL
 #include <curl/curl.h>
+#endif
 
 #include <openssl/evp.h> /* EVP_Digest */
 #include <openssl/sha.h> /* SHA256_DIGEST_LENGTH */
