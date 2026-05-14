@@ -24,7 +24,7 @@ add_library(CemuComponents
 )
 
 if (ENABLE_CURL)
-add_library(CemuComponents
+target_sources(CemuComponents PRIVATE
   napi/napi_act.cpp
   napi/napi_ec.cpp
   napi/napi.cpp
