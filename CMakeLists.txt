@@ -179,15 +179,11 @@ option(ENABLE_HIDAPI "Build with HIDAPI" ON)
 option(ENABLE_SDL "Enables the SDLController backend" ON)
 option(ENABLE_LIBUSB "Build with libusb support" ON)
 
-# CURL support is required
-
 if (ENABLE_LIBUSB)
 	add_compile_definitions(HAS_LIBUSB=1)
 else()
 	add_compile_definitions(HAS_LIBUSB=0)
 endif()
-
-add_compile_definitions(HAS_CURL=1)
 
 if (ENABLE_SDL)
 	add_compile_definitions(HAS_SDL=1)
