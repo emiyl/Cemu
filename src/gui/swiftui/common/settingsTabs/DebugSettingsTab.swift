@@ -65,6 +65,9 @@ extension SettingsView {
                     }
                 }
                 Toggle(
+                    "Use shader cache",
+                    isOn: boolBinding(\CemuSettingsState.useShaderCache))
+                Toggle(
                     "Framebuffer fetch", isOn: boolBinding(\CemuSettingsState.framebufferFetch))
             }
         }

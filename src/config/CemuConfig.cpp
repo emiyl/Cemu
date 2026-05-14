@@ -274,6 +274,8 @@ XMLConfigParser CemuConfig::Load(XMLConfigParser& parser)
 	crash_dump = debug.get("CrashDumpUnix", crash_dump);
 #endif
 	gdb_port = debug.get("GDBPort", 1337);
+	// option to skip loading/writing shader cache
+	use_shader_cache = debug.get("UseShaderCache", use_shader_cache);
 #ifdef ENABLE_METAL
 	gpu_capture_dir = debug.get("GPUCaptureDir", "");
 	framebuffer_fetch = debug.get("FramebufferFetch", true);
@@ -438,6 +440,7 @@ XMLConfigParser CemuConfig::Save(XMLConfigParser& parser)
 	debug.set("CrashDumpUnix", crash_dump.GetValue());
 #endif
 	debug.set("GDBPort", gdb_port);
+	debug.set("UseShaderCache", use_shader_cache.GetValue());
 #ifdef ENABLE_METAL
 	debug.set("GPUCaptureDir", gpu_capture_dir);
 	debug.set("FramebufferFetch", framebuffer_fetch);

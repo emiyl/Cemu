@@ -126,6 +126,7 @@ struct CemuSettingsState: Codable, Equatable {
     var crashDump: Int32 = 0
     var gdbPort: Int32 = 1337
     var framebufferFetch: Int32 = 0
+    var useShaderCache: Int32 = 1
     var cpuMode: Int32 = 4
 }
 
@@ -444,7 +445,6 @@ final class SettingsStore: ObservableObject {
 
     private var autosaveWorkItem: DispatchWorkItem?
     private var isLoading = false
-
 
     let availableLanguages: [LanguageOption] = [
         LanguageOption(id: 0, title: "Default"),

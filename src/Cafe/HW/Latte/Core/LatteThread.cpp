@@ -192,8 +192,11 @@ int Latte_ThreadEntry()
 			}
 		}
 	}
-	// load disk shader cache
-    LatteShaderCache_Load();
+	// load disk shader cache (can be disabled via config)
+	if (GetConfig().use_shader_cache)
+	{
+		LatteShaderCache_Load();
+	}
 	// init registers
 	Latte_LoadInitialRegisters();
 	// let CPU thread know the GPU is done initializing
