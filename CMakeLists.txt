@@ -82,7 +82,7 @@ if(IS_IOS)
 	set(ENABLE_CUBEB OFF CACHE BOOL "Build with CUBEB support" FORCE)
 	set(ENABLE_VULKAN OFF CACHE BOOL "Enables the Vulkan backend" FORCE)
 	set(ENABLE_LIBUSB OFF CACHE BOOL "Build with libusb support" FORCE)
-	set(ENABLE_CURL OFF CACHE BOOL "Build with CURL support" FORCE)
+	# set(ENABLE_CURL OFF CACHE BOOL "Build with CURL support" FORCE)
 	set(ENABLE_SDL OFF CACHE BOOL "Enables the SDLController backend" FORCE)
 endif()
 

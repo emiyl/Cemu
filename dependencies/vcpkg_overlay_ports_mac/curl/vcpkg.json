@@ -1,0 +1,37 @@
+{
+  "name": "curl",
+  "version": "8.17.0",
+  "description": "A library for transferring data with URLs (iOS overlay)",
+  "homepage": "https://curl.se/",
+  "license": "curl AND ISC AND BSD-3-Clause",
+  "dependencies": [
+    {
+      "name": "vcpkg-cmake",
+      "host": true
+    },
+    {
+      "name": "vcpkg-cmake-config",
+      "host": true
+    },
+    "zlib"
+  ],
+  "default-features": [
+    "non-http",
+    "ssl"
+  ],
+  "features": {
+    "openssl": {
+      "description": "TLS support (openssl)",
+      "dependencies": [
+        "openssl"
+      ]
+    },
+    "non-http": {
+      "description": "Disable HTTP and HTTPS"
+    },
+    "ssl": {
+      "description": "Enable default TLS backend"
+    }
+  }
+}
+
