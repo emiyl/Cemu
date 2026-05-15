@@ -89,19 +89,21 @@ if(NOT IS_IOS)
 		../dist/windows/cemu.manifest
 		)
 	endif()
-
-	set_property(TARGET CemuBin PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-	set_property(TARGET CemuBin PROPERTY WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
-	set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
 endif()
 
 if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
     set_target_properties(CemuBin PROPERTIES
         XCODE_ATTRIBUTE_ENABLE_DEBUG_DYLIB[variant=Debug] "YES"
     )
+endif()
 
-	string(TIMESTAMP CURRENT_YEAR "%Y" UTC)
+string(TIMESTAMP CURRENT_YEAR "%Y" UTC)
 
+set_property(TARGET CemuBin PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+set_property(TARGET CemuBin PROPERTY WIN32_EXECUTABLE $<NOT:$<CONFIG:Debug>>)
+set(OUTPUT_NAME "Cemu_$<LOWER_CASE:$<CONFIG>>")
+
+if (MACOS_BUNDLE OR IS_IOS)
 	set_property(TARGET CemuBin PROPERTY MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/resource/MacOSXBundleInfo.plist.in")
 
 	set(RESOURCE_FILES "${CMAKE_SOURCE_DIR}/src/resource/cemu.icns")
@@ -189,7 +191,6 @@ if(APPLE AND CMAKE_GENERATOR STREQUAL "Xcode")
 				"$<TARGET_FILE:CemuBin>"
 		)
 	endif()
-  
 else()
     if(APPLE AND !IS_IOS)
 		if (ENABLE_VULKAN)
