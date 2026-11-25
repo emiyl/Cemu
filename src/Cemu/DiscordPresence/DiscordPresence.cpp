@@ -4,7 +4,7 @@
 
 #include <discord_rpc.h>
 #include "Common/version.h"
- 
+
 DiscordPresence::DiscordPresence()
 {
 	DiscordEventHandlers handlers{};
