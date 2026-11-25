@@ -291,6 +291,21 @@ size_t header_callback(char* buffer, size_t size, size_t nitems, void* userdata)
 
 thread_local PPCConcurrentQueue<QueueMsg_t>* g_callerQueue;
 thread_local ConcurrentQueue<QueueMsg_t>* g_threadQueue;
+
+uint32 CopyReadCallbackResult(char* buffer, const char* data, uint32 result, size_t capacity)
+{
+	if (result == CURL_READFUNC_ABORT || result == CURL_READFUNC_PAUSE)
+		return result;
+	if (result > capacity)
+	{
+		cemuLog_log(LogType::Force, "nlibcurl: Read callback returned {} bytes for a {} byte buffer", result, capacity);
+		return CURL_READFUNC_ABORT;
+	}
+	if (result)
+		memcpy(buffer, data, result);
+	return result;
+}
+
 void CurlWorkerThread(CURL_t* curl, PPCConcurrentQueue<QueueMsg_t>* callerQueue, ConcurrentQueue<QueueMsg_t>* threadQueue)
 {
 	g_callerQueue = callerQueue;
@@ -361,8 +376,7 @@ uint32 SendOrderToWorker(CURL_t* curl, QueueOrder order, uint32 arg1 = 0)
 			cemuLog_logDebug(LogType::Force, "QueueOrder_ReadCB size: {} nitems: {}", msg.read_cb.size, msg.read_cb.nitems);
 			sendMsg.result = PPCCoreCallback(curl->fread_func_set.GetMPTR(), tmp.GetMPTR(), msg.read_cb.size, msg.read_cb.nitems, curl->in_set.GetMPTR());
 			cemuLog_logDebug(LogType::Force, "readcb size: {}", (sint32)sendMsg.result);
-			if (sendMsg.result > 0)
-				memcpy(msg.read_cb.buffer, tmp.GetPointer(), sendMsg.result);
+			sendMsg.result = CopyReadCallbackResult(msg.read_cb.buffer, tmp.GetPointer(), sendMsg.result, msg.read_cb.size * msg.read_cb.nitems);
 
 			threadQueue.push(sendMsg);
 		}
@@ -1066,7 +1080,12 @@ int sockopt_callback(void* clientp, curl_socket_t curlfd, curlsocktype purpose)
 
 size_t read_callback(char* buffer, size_t size, size_t nitems, void* instream)
 {	
-	nitems = std::min<uint32>(nitems, 0x4000);
+	if (size > 0x4000)
+	{
+		cemuLog_log(LogType::Force, "nlibcurl: Read callback item size {} exceeds the buffer limit", size);
+		return CURL_READFUNC_ABORT;
+	}
+	nitems = std::min<size_t>(nitems, size ? 0x4000 / size : 0x4000);
 	CURL_t* curl = (CURL_t*)instream;
 
 	cemuLog_logDebug(LogType::Force, "read_callback(0x{}, 0x{:x}, 0x{:x}, 0x{:08x}) [func: 0x{:x}]", (void*)buffer, size, nitems, curl->in_set.GetMPTR(), curl->fread_func_set.GetMPTR());
@@ -1074,16 +1093,15 @@ size_t read_callback(char* buffer, size_t size, size_t nitems, void* instream)
 	if (g_callerQueue == nullptr || g_threadQueue == nullptr)
 	{
 		StackAllocator<char> tmp((uint32)(size * nitems));
-		const sint32 result = PPCCoreCallback(curl->fread_func_set.GetMPTR(), tmp.GetMPTR(), (uint32)size, (uint32)nitems, curl->in_set.GetMPTR());
-		memcpy(buffer, tmp.GetPointer(), result);
-		return result;
+		const uint32 result = PPCCoreCallback(curl->fread_func_set.GetMPTR(), tmp.GetMPTR(), (uint32)size, (uint32)nitems, curl->in_set.GetMPTR());
+		return CopyReadCallbackResult(buffer, tmp.GetPointer(), result, size * nitems);
 	}
 
 	QueueMsg_t msg = {};
 	msg.order = QueueOrder_ReadCB;
 	msg.read_cb.buffer = buffer;
 	msg.read_cb.size = (uint32)size;
-	msg.read_cb.nitems = (uint32)std::min<uint32>(nitems, 0x4000); // limit this to 16KB which is the limit in nlibcurl.rpl (Super Mario Maker crashes on level upload if the size is too big)
+	msg.read_cb.nitems = (uint32)nitems;
 
 	cemuLog_logDebug(LogType::Force, "read_callback(0x{}, 0x{:x}, 0x{:x}, 0x{:08x}) [func: 0x{:x}] PUSH", (void*)buffer, size, nitems, curl->in_set.GetMPTR(), curl->fread_func_set.GetMPTR());
 	g_callerQueue->push(msg, curl->curlThread);
