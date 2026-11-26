@@ -656,6 +656,7 @@ target_link_libraries(CemuCafe PRIVATE
   CURL::libcurl
   ih264d
   zstd::zstd
+  PkgConfig::OPUS
   ${glslang_target}
   PUBLIC
   OpenSSL::SSL

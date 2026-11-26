@@ -3,6 +3,7 @@
 #include "audio/IAudioAPI.h"
 #include "config/CemuConfig.h"
 #include "Common/CafeStaticVar.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 
 namespace snd_core
 {
@@ -308,7 +309,9 @@ namespace snd_core
 
 		std::shared_lock lock(g_audioMutex);
 
-		const uint32 channels = g_padAudio ? g_padAudio->GetChannels() : AX_DRC_CHANNEL_COUNT;
+		const uint32 channels = static_cast<uint32>(
+			sampleCount / AX_SAMPLES_PER_3MS_48KHZ);
+		cemu_assert(channels > 0 && channels <= AX_DRC_CHANNEL_COUNT);
 		sint16* outputChannel = tempDRCChannelData + AX_SAMPLES_PER_3MS_48KHZ * tempDRCAudioBlockCounter * channels;
 		for (sint32 i = 0; i < sampleCount; ++i)
 		{
@@ -320,6 +323,8 @@ namespace snd_core
 		{
 			if (g_padAudio)
 				g_padAudio->FeedBlock(tempDRCChannelData);
+			GamepadRTPStream::SubmitAudio(tempDRCChannelData,
+				AX_SAMPLES_PER_3MS_48KHZ * AX_FRAMES_PER_GROUP, channels);
 
 			tempDRCAudioBlockCounter = 0;
 		}

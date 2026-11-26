@@ -2572,9 +2572,15 @@ void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
 		"a=framerate:{}\r\n"
 		"a=recvonly\r\n",
 		address, port, fps);
+	const std::string audioSdp = fmt::format(
+		"m=audio {} RTP/AVP 97\r\n"
+		"a=rtpmap:97 opus/48000/2\r\n"
+		"a=fmtp:97 useinbandfec=1\r\n"
+		"a=recvonly\r\n",
+		port + 2);
 
 	std::ofstream file(dialog.GetPath().utf8_string(), std::ios::binary);
-	file << sdp;
+	file << sdp << audioSdp;
 	if (!file)
 	{
 		wxMessageBox(_("Failed to save the SDP file."), _("Error"),
