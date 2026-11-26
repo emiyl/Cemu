@@ -256,6 +256,11 @@ wxPanel* GeneralSettings2::AddGeneralPage(wxNotebook* notebook)
 			third_row->Add(m_play_boot_sound, 0, botflag, 5);
 			CountRowElement();
 
+			m_host_gamepad_screen_rtp = new wxCheckBox(box, wxID_ANY, _("Host gamepad screen over RTP"));
+			m_host_gamepad_screen_rtp->SetToolTip(_("Streams the gamepad screen as low-latency 854x480 H.264 at 60 fps to RTP multicast 239.255.0.1:5004"));
+			third_row->Add(m_host_gamepad_screen_rtp, 0, botflag, 5);
+			CountRowElement();
+
 			m_auto_update = new wxCheckBox(box, wxID_ANY, _("Automatically check for updates"));
 			m_auto_update->SetToolTip(_("Automatically checks for new cemu versions on startup"));
 			third_row->Add(m_auto_update, 0, botflag, 5);
@@ -1133,6 +1138,7 @@ void GeneralSettings2::StoreConfig()
 	wxGuiConfig.msw_theme = m_msw_theme->GetSelection();
 #endif
 	config.play_boot_sound = m_play_boot_sound->IsChecked();
+	config.host_gamepad_screen_rtp = m_host_gamepad_screen_rtp->IsChecked();
 	config.disable_screensaver = m_disable_screensaver->IsChecked();
 	// toggle while a game is running
 	if (CafeSystem::IsTitleRunning())
@@ -1893,6 +1899,7 @@ void GeneralSettings2::ApplyConfig()
 
 	m_disable_screensaver->SetValue(config.disable_screensaver);
 	m_play_boot_sound->SetValue(config.play_boot_sound);
+	m_host_gamepad_screen_rtp->SetValue(config.host_gamepad_screen_rtp);
 #if BOOST_OS_WINDOWS
 	m_msw_theme->SetSelection(wxGUIconfig.msw_theme);
 #endif

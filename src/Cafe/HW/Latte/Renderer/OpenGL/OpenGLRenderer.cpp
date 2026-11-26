@@ -1,4 +1,5 @@
 #include "Cafe/HW/Latte/Renderer/OpenGL/OpenGLRenderer.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 #include "WindowSystem.h"
 
 #include "Cafe/HW/Latte/Core/LatteTextureLoader.h"
@@ -541,10 +542,12 @@ void OpenGLRenderer::ClearColorbuffer(bool padView)
 
 void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padView)
 {
-	if(!m_screenshot_requested && m_screenshot_state == ScreenshotState::None)
+	const bool screenshotRequested = m_screenshot_requested || m_screenshot_state != ScreenshotState::None;
+	const bool rtpRequested = padView && GamepadRTPStream::ShouldCaptureFrame();
+	if (!screenshotRequested && !rtpRequested)
 		return;
 
-	if (IsPadWindowActive())
+	if (screenshotRequested && IsPadWindowActive())
 	{
 		// we already took a pad view screenshow and want a main window screenshot
 		if (m_screenshot_state == ScreenshotState::Main && padView)
@@ -559,7 +562,7 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 		else
 			m_screenshot_state = ScreenshotState::None;
 	}
-	else
+	else if (screenshotRequested)
 		m_screenshot_state = ScreenshotState::None;
 
 	int screenshotWidth, screenshotHeight;
@@ -603,7 +606,10 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 		}
 	}
 
-	SaveScreenshot(rgb_data, screenshotWidth, screenshotHeight, !padView);
+	if (screenshotRequested)
+		SaveScreenshot(rgb_data, screenshotWidth, screenshotHeight, !padView);
+	if (rtpRequested)
+		GamepadRTPStream::SubmitFrame(std::move(rgb_data), screenshotWidth, screenshotHeight);
 }
 
 void OpenGLRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutputShader* shader, bool useLinearTexFilter, sint32 imageX, sint32 imageY, sint32 imageWidth, sint32 imageHeight, bool padView, bool clearBackground)

@@ -30,6 +30,15 @@
       "version>=": "12.1.0"
     },
     "libpng",
+    {
+      "name": "ffmpeg",
+      "default-features": false,
+      "features": [
+        "avcodec",
+        "swscale",
+        "x264"
+      ]
+    },
     "glm",
     {
       "name": "glslang",

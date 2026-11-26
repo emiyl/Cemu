@@ -55,6 +55,7 @@ private:
 	wxCheckBox* m_auto_update, *m_receive_untested_releases, *m_save_screenshot;
 	wxCheckBox* m_disable_screensaver;
 	wxCheckBox* m_play_boot_sound;
+	wxCheckBox* m_host_gamepad_screen_rtp;
 #if BOOST_OS_WINDOWS
 	wxChoice* m_msw_theme;
 #endif

@@ -1034,7 +1034,8 @@ void LatteRenderTarget_itHLECopyColorBufferToScanBuffer(MPTR colorBufferPtr, uin
 
 	bool showDRC = swkbd_hasKeyboardInputHook() == false && (isDRCPrimary ^ altScreenRequested);
 
-	if ((renderTarget & RENDER_TARGET_DRC) && g_renderer->IsPadWindowActive())
+	if ((renderTarget & RENDER_TARGET_DRC) &&
+		(g_renderer->IsPadWindowActive() || GetConfig().host_gamepad_screen_rtp))
 		LatteRenderTarget_copyToBackbuffer(texView, true);
 	if (((renderTarget & RENDER_TARGET_TV) && !showDRC) || ((renderTarget & RENDER_TARGET_DRC) && showDRC))
 		LatteRenderTarget_copyToBackbuffer(texView, false);

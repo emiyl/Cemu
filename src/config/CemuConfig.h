@@ -418,6 +418,7 @@ struct CemuConfig
 	ConfigValue<bool> disable_screensaver{DISABLE_SCREENSAVER_DEFAULT};
 #undef DISABLE_SCREENSAVER_DEFAULT
 	ConfigValue<bool> play_boot_sound{false};
+	ConfigValue<bool> host_gamepad_screen_rtp{false};
 
 	std::vector<std::string> game_paths;
 	std::mutex game_cache_entries_mutex;

@@ -161,6 +161,8 @@ add_library(CemuCafe
   HW/Latte/LegacyShaderDecompiler/LatteDecompilerRegisterDataTypeTracker.cpp
   HW/Latte/Renderer/Renderer.cpp
   HW/Latte/Renderer/Renderer.h
+  HW/Latte/Renderer/GamepadRTPStream.cpp
+  HW/Latte/Renderer/GamepadRTPStream.h
   HW/Latte/Renderer/RendererCore.cpp
   HW/Latte/Renderer/RendererCore.h
   HW/Latte/Renderer/RendererOuputShader.cpp
@@ -658,6 +660,18 @@ target_link_libraries(CemuCafe PRIVATE
   PUBLIC
   OpenSSL::SSL
 )
+
+if (ENABLE_VCPKG)
+  target_include_directories(CemuCafe PRIVATE ${FFMPEG_INCLUDE_DIRS})
+  target_link_directories(CemuCafe PRIVATE ${FFMPEG_LIBRARY_DIRS})
+  target_link_libraries(CemuCafe PRIVATE ${FFMPEG_LIBRARIES})
+else()
+  target_link_libraries(CemuCafe PRIVATE
+    PkgConfig::AVCODEC
+    PkgConfig::AVUTIL
+    PkgConfig::SWSCALE
+  )
+endif()
 
 if (ENABLE_WAYLAND)
 	# PUBLIC because wayland-client.h is included in VulkanAPI.h

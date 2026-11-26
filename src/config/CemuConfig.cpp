@@ -30,6 +30,7 @@ XMLConfigParser CemuConfig::Load(XMLConfigParser& parser)
 	proxy_server = parser.get("proxy_server", "");
 	disable_screensaver = parser.get("disable_screensaver", disable_screensaver);
 	play_boot_sound = parser.get("play_boot_sound", play_boot_sound);
+	host_gamepad_screen_rtp = parser.get("host_gamepad_screen_rtp", host_gamepad_screen_rtp);
 	console_language = parser.get("console_language", console_language.GetInitValue());
 
 	game_paths.clear();
@@ -304,6 +305,7 @@ XMLConfigParser CemuConfig::Save(XMLConfigParser& parser)
 	config.set("proxy_server", proxy_server.GetValue().c_str());
 	config.set<bool>("disable_screensaver", disable_screensaver);
 	config.set<bool>("play_boot_sound", play_boot_sound);
+	config.set<bool>("host_gamepad_screen_rtp", host_gamepad_screen_rtp);
 
 	// config.set("cpu_mode", cpu_mode.GetValue());
 	//config.set("console_region", console_region.GetValue());

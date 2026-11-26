@@ -1,4 +1,5 @@
 #include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 #include "Cafe/HW/Latte/Renderer/Metal/MetalMemoryManager.h"
 #include "Cafe/HW/Latte/Renderer/Metal/LatteTextureMtl.h"
 #include "Cafe/HW/Latte/Renderer/Metal/LatteTextureViewMtl.h"
@@ -395,10 +396,12 @@ void MetalRenderer::SwapBuffers(bool swapTV, bool swapDRC)
 }
 
 void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padView) {
-	if (!m_screenshot_requested && m_screenshot_state == ScreenshotState::None)
+	const bool screenshotRequested = m_screenshot_requested || m_screenshot_state != ScreenshotState::None;
+	const bool rtpRequested = padView && GamepadRTPStream::ShouldCaptureFrame();
+	if (!screenshotRequested && !rtpRequested)
 		return;
 
-	if (m_mainLayer.GetDrawable())
+	if (screenshotRequested && m_mainLayer.GetDrawable())
 	{
 		// we already took a pad view screenshow and want a main window screenshot
 		if (m_screenshot_state == ScreenshotState::Main && padView)
@@ -413,7 +416,7 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 		else
 			m_screenshot_state = ScreenshotState::None;
 	}
-	else
+	else if (screenshotRequested)
 		m_screenshot_state = ScreenshotState::None;
 
 	auto texMtl = static_cast<LatteTextureMtl*>(texView->baseTexture);
@@ -461,8 +464,10 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 		break;
 	}
 
-	if (formatValid)
+	if (formatValid && screenshotRequested)
 		SaveScreenshot(rgb_data, width, height, !padView);
+	if (formatValid && rtpRequested)
+		GamepadRTPStream::SubmitFrame(std::move(rgb_data), width, height);
 }
 
 void MetalRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutputShader* shader, bool useLinearTexFilter,

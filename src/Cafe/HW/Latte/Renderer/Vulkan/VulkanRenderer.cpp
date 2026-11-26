@@ -1,4 +1,5 @@
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanRenderer.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/VulkanAPI.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/LatteTextureVk.h"
 #include "Cafe/HW/Latte/Renderer/Vulkan/RendererShaderVk.h"
@@ -1042,10 +1043,12 @@ bool VulkanRenderer::IsPadWindowActive()
 
 void VulkanRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padView)
 {
-	if (!m_screenshot_requested && m_screenshot_state == ScreenshotState::None)
+	const bool screenshotRequested = m_screenshot_requested || m_screenshot_state != ScreenshotState::None;
+	const bool rtpRequested = padView && GamepadRTPStream::ShouldCaptureFrame();
+	if (!screenshotRequested && !rtpRequested)
 		return;
 
-	if (IsSwapchainInfoValid(false))
+	if (screenshotRequested && IsSwapchainInfoValid(false))
 	{
 		// we already took a pad view screenshow and want a main window screenshot
 		if (m_screenshot_state == ScreenshotState::Main && padView)
@@ -1060,7 +1063,7 @@ void VulkanRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 		else
 			m_screenshot_state = ScreenshotState::None;
 	}
-	else
+	else if (screenshotRequested)
 		m_screenshot_state = ScreenshotState::None;
 
 	auto texViewVk = (LatteTextureViewVk*)texView;
@@ -1307,8 +1310,10 @@ void VulkanRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 	if (imageMemory)
 		vkFreeMemory(m_logicalDevice, imageMemory, nullptr);
 
-	if (formatValid)
+	if (formatValid && screenshotRequested)
 		SaveScreenshot(rgb_data, width, height, !padView);
+	if (formatValid && rtpRequested)
+		GamepadRTPStream::SubmitFrame(std::move(rgb_data), width, height);
 }
 
 static const float kQueuePriority = 1.0f;
