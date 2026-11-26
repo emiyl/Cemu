@@ -438,6 +438,10 @@ wxString MainWindow::GetInitialWindowTitle()
 
 void MainWindow::OnClose(wxCloseEvent& event)
 {
+	if (m_closing)
+		return;
+	m_closing = true;
+
 	if (m_debugger_window)
 	{
 		m_debugger_window->CleanupForDestroy();
@@ -454,10 +458,18 @@ void MainWindow::OnClose(wxCloseEvent& event)
 	SaveSettings();
 	m_timer->Stop();
 
-	event.Skip();
-
-    CafeSystem::Shutdown();
+#if BOOST_OS_MACOS
+	event.Skip(false);
+	CallAfter([this]() {
+		CafeSystem::Shutdown();
+		DestroyCanvas();
+		wxTheApp->ExitMainLoop();
+	});
+#else
+	CafeSystem::Shutdown();
 	DestroyCanvas();
+	event.Skip();
+#endif
 }
 
 bool MainWindow::InstallUpdate(const fs::path& metaFilePath)

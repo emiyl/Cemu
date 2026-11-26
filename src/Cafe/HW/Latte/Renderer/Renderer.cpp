@@ -9,6 +9,7 @@
 #include <png.h>
 
 #include "config/ActiveSettings.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 
 #if BOOST_OS_WINDOWS
 #include "util/DXGIWrapper/DXGIWrapper.h"
@@ -65,6 +66,7 @@ void Renderer::Initialize()
 
 void Renderer::Shutdown()
 {
+	GamepadRTPStream::Shutdown();
 	// imgui
 	ImGui::DestroyContext(imguiTVContext);
 	ImGui::DestroyContext(imguiPadContext);

@@ -911,6 +911,21 @@ MetalVideoToolboxStream& GetMetalWorker()
 
 namespace GamepadRTPStream
 {
+void Shutdown()
+{
+#if BOOST_OS_MACOS
+	{
+		std::scoped_lock lock(s_metalWorkerMutex);
+		s_metalWorker.reset();
+	}
+#endif
+	{
+		std::scoped_lock lock(s_workerMutex);
+		s_worker.reset();
+	}
+	s_lastCaptureUs = 0;
+}
+
 bool ShouldCaptureFrame()
 {
 	if (!GetConfig().host_gamepad_screen_rtp)
