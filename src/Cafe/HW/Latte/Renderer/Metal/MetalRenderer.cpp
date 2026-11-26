@@ -400,6 +400,12 @@ void MetalRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool padV
 	const bool rtpRequested = padView && GamepadRTPStream::ShouldCaptureFrame();
 	if (!screenshotRequested && !rtpRequested)
 		return;
+	if (rtpRequested && !screenshotRequested)
+	{
+		auto* texMtl = static_cast<LatteTextureMtl*>(texView->baseTexture);
+		GamepadRTPStream::SubmitMetalFrame(this, texMtl->GetTexture());
+		return;
+	}
 
 	if (screenshotRequested && m_mainLayer.GetDrawable())
 	{

@@ -7,6 +7,15 @@
 
 #include <random>
 
+#if BOOST_OS_MACOS
+#include "Cafe/HW/Latte/Renderer/Metal/MetalRenderer.h"
+#include <CoreMedia/CMBlockBuffer.h>
+#include <CoreMedia/CMSampleBuffer.h>
+#include <CoreVideo/CVPixelBuffer.h>
+#include <IOSurface/IOSurfaceRef.h>
+#include <VideoToolbox/VideoToolbox.h>
+#endif
+
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -47,6 +56,450 @@ struct CaptureFrame
 	sint32 width;
 	sint32 height;
 };
+
+#if BOOST_OS_MACOS
+class MetalVideoToolboxStream
+{
+	struct PendingFrame
+	{
+		CVPixelBufferRef pixelBuffer{};
+		MTL::CommandBuffer* commandBuffer{};
+	};
+
+public:
+	MetalVideoToolboxStream()
+		: m_ssrc(CreateSsrc())
+	{
+		m_thread = std::thread(&MetalVideoToolboxStream::Run, this);
+	}
+
+	~MetalVideoToolboxStream()
+	{
+		{
+			std::scoped_lock lock(m_mutex);
+			m_stopping = true;
+		}
+		m_condition.notify_all();
+		m_thread.join();
+		DiscardPending();
+		if (m_session)
+		{
+			VTCompressionSessionCompleteFrames(m_session, kCMTimeInvalid);
+			VTCompressionSessionInvalidate(m_session);
+			CFRelease(m_session);
+		}
+		if (m_computePipeline)
+			m_computePipeline->release();
+		if (m_computeFunction)
+			m_computeFunction->release();
+		if (m_computeLibrary)
+			m_computeLibrary->release();
+	}
+
+	void Submit(MetalRenderer* renderer, MTL::Texture* sourceTexture)
+	{
+		{
+			std::scoped_lock lock(m_mutex);
+			if (m_pendingFrame.pixelBuffer)
+				return;
+		}
+		if (!InitializeComputePipeline(renderer->GetDevice()) ||
+			!InitializeSession())
+		{
+			return;
+		}
+
+		CFMutableDictionaryRef pixelAttributes = CFDictionaryCreateMutable(
+			kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks,
+			&kCFTypeDictionaryValueCallBacks);
+		CFNumberRef pixelFormat = CreateNumber(kCVPixelFormatType_32BGRA);
+		CFNumberRef width = CreateNumber(kVideoWidth);
+		CFNumberRef height = CreateNumber(kVideoHeight);
+		CFDictionaryRef iosurfaceProperties =
+			CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
+				&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
+		CFDictionarySetValue(pixelAttributes, kCVPixelBufferPixelFormatTypeKey, pixelFormat);
+		CFDictionarySetValue(pixelAttributes, kCVPixelBufferWidthKey, width);
+		CFDictionarySetValue(pixelAttributes, kCVPixelBufferHeightKey, height);
+		CFDictionarySetValue(pixelAttributes, kCVPixelBufferIOSurfacePropertiesKey,
+			iosurfaceProperties);
+		CFDictionarySetValue(pixelAttributes, kCVPixelBufferMetalCompatibilityKey, kCFBooleanTrue);
+		CFRelease(pixelFormat);
+		CFRelease(width);
+		CFRelease(height);
+		CFRelease(iosurfaceProperties);
+
+		CVPixelBufferRef pixelBuffer = nullptr;
+		const CVReturn cvResult = CVPixelBufferCreate(
+			kCFAllocatorDefault, kVideoWidth, kVideoHeight,
+			kCVPixelFormatType_32BGRA, pixelAttributes, &pixelBuffer);
+		CFRelease(pixelAttributes);
+		if (cvResult != kCVReturnSuccess || !pixelBuffer)
+			return;
+
+		auto* descriptor = MTL::TextureDescriptor::alloc()->init();
+		descriptor->setTextureType(MTL::TextureType2D);
+		descriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+		descriptor->setWidth(kVideoWidth);
+		descriptor->setHeight(kVideoHeight);
+		descriptor->setMipmapLevelCount(1);
+		descriptor->setUsage(MTL::TextureUsageShaderWrite);
+		descriptor->setStorageMode(MTL::StorageModeShared);
+		MTL::Texture* destinationTexture = renderer->GetDevice()->newTexture(
+			descriptor, CVPixelBufferGetIOSurface(pixelBuffer), 0);
+		descriptor->release();
+		if (!destinationTexture)
+		{
+			CVPixelBufferRelease(pixelBuffer);
+			return;
+		}
+
+		MTL::ComputeCommandEncoder* encoder = renderer->GetComputeCommandEncoder();
+		encoder->setComputePipelineState(m_computePipeline);
+		encoder->setTexture(sourceTexture, 0);
+		encoder->setTexture(destinationTexture, 1);
+		const MTL::Size threadsPerThreadgroup = {
+			m_computePipeline->threadExecutionWidth(),
+			std::max<NS::UInteger>(1, m_computePipeline->maxTotalThreadsPerThreadgroup() /
+				m_computePipeline->threadExecutionWidth()),
+			1
+		};
+		encoder->dispatchThreads({kVideoWidth, kVideoHeight, 1}, threadsPerThreadgroup);
+		renderer->EndEncoding();
+
+		MTL::CommandBuffer* commandBuffer = renderer->GetCurrentCommandBuffer()->retain();
+		renderer->CommitCommandBuffer();
+		destinationTexture->release();
+
+		{
+			std::scoped_lock lock(m_mutex);
+			if (m_pendingFrame.pixelBuffer)
+			{
+				commandBuffer->release();
+				CVPixelBufferRelease(pixelBuffer);
+			}
+			else
+				m_pendingFrame = {pixelBuffer, commandBuffer};
+		}
+		m_condition.notify_one();
+	}
+
+private:
+	static uint32 CreateSsrc()
+	{
+		std::random_device randomDevice;
+		return static_cast<uint32>(randomDevice());
+	}
+
+	static CFNumberRef CreateNumber(sint32 value)
+	{
+		return CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value);
+	}
+
+	static void ReleasePending(PendingFrame& pending)
+	{
+		if (pending.commandBuffer)
+			pending.commandBuffer->release();
+		if (pending.pixelBuffer)
+			CVPixelBufferRelease(pending.pixelBuffer);
+		pending = {};
+	}
+
+	void DiscardPending()
+	{
+		std::scoped_lock lock(m_mutex);
+		ReleasePending(m_pendingFrame);
+		ReleasePending(m_inFlightFrame);
+	}
+
+	bool InitializeComputePipeline(MTL::Device* device)
+	{
+		if (m_computePipeline && m_device == device)
+			return true;
+		if (m_computePipeline)
+		{
+			m_computePipeline->release();
+			m_computeFunction->release();
+			m_computeLibrary->release();
+			m_computePipeline = nullptr;
+			m_computeFunction = nullptr;
+			m_computeLibrary = nullptr;
+		}
+
+		const char* source = R"(
+			#include <metal_stdlib>
+			using namespace metal;
+			kernel void cemuRtpScale(
+				texture2d<float, access::read> source [[texture(0)]],
+				texture2d<float, access::write> destination [[texture(1)]],
+				uint2 gid [[thread_position_in_grid]]) {
+				const uint2 size = uint2(destination.get_width(), destination.get_height());
+				if (gid.x >= size.x || gid.y >= size.y)
+					return;
+				const uint2 sample = min(
+					uint2(gid.x * source.get_width() / size.x,
+						gid.y * source.get_height() / size.y),
+					uint2(source.get_width() - 1, source.get_height() - 1));
+				destination.write(source.read(sample), gid);
+			}
+		)";
+		NS::String* sourceString = NS::String::string(source, NS::UTF8StringEncoding);
+		NS::Error* error = nullptr;
+		m_computeLibrary = device->newLibrary(sourceString, nullptr, &error);
+		if (!m_computeLibrary)
+		{
+			cemuLog_log(LogType::Force, "RTP: failed to compile Metal capture shader{}",
+				error ? error->localizedDescription()->utf8String() : "");
+			return false;
+		}
+		m_computeFunction = m_computeLibrary->newFunction(
+			NS::String::string("cemuRtpScale", NS::UTF8StringEncoding));
+		if (!m_computeFunction)
+			return false;
+		m_computePipeline = device->newComputePipelineState(m_computeFunction, &error);
+		if (!m_computePipeline)
+			return false;
+		m_device = device;
+		return true;
+	}
+
+	bool InitializeSession()
+	{
+		if (m_session)
+			return true;
+
+		CFMutableDictionaryRef sourceAttributes = CFDictionaryCreateMutable(
+			kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks,
+			&kCFTypeDictionaryValueCallBacks);
+		auto SetNumber = [&](CFStringRef key, sint32 value) {
+			CFNumberRef number = CreateNumber(value);
+			CFDictionarySetValue(sourceAttributes, key, number);
+			CFRelease(number);
+		};
+		SetNumber(kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA);
+		SetNumber(kCVPixelBufferWidthKey, kVideoWidth);
+		SetNumber(kCVPixelBufferHeightKey, kVideoHeight);
+		CFDictionarySetValue(sourceAttributes, kCVPixelBufferMetalCompatibilityKey, kCFBooleanTrue);
+
+		const OSStatus status = VTCompressionSessionCreate(
+			kCFAllocatorDefault, kVideoWidth, kVideoHeight,
+			kCMVideoCodecType_H264, nullptr, sourceAttributes,
+			nullptr, &OnEncodedFrame, this, &m_session);
+		CFRelease(sourceAttributes);
+		if (status != noErr || !m_session)
+		{
+			cemuLog_log(LogType::Force, "RTP: failed to create VideoToolbox session: {}", status);
+			return false;
+		}
+
+		auto SetSessionProperty = [&](CFStringRef key, CFTypeRef value) {
+			const OSStatus result = VTSessionSetProperty(m_session, key, value);
+			if (result != noErr)
+				cemuLog_log(LogType::Force, "RTP: failed to set VideoToolbox property");
+		};
+		SetSessionProperty(kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
+		SetSessionProperty(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse);
+		SetSessionProperty(kVTCompressionPropertyKey_ProfileLevel,
+			kVTProfileLevel_H264_Baseline_AutoLevel);
+		CFNumberRef bitRate = CreateNumber(6'000'000);
+		SetSessionProperty(kVTCompressionPropertyKey_AverageBitRate, bitRate);
+		CFRelease(bitRate);
+		CFNumberRef fps = CreateNumber(kVideoFps);
+		SetSessionProperty(kVTCompressionPropertyKey_ExpectedFrameRate, fps);
+		CFRelease(fps);
+		CFNumberRef keyframeInterval = CreateNumber(kVideoFps);
+		SetSessionProperty(kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval);
+		CFRelease(keyframeInterval);
+		CFNumberRef zeroDelay = CreateNumber(0);
+		SetSessionProperty(kVTCompressionPropertyKey_MaxFrameDelayCount, zeroDelay);
+		CFRelease(zeroDelay);
+
+		if (VTCompressionSessionPrepareToEncodeFrames(m_session) != noErr)
+		{
+			VTCompressionSessionInvalidate(m_session);
+			CFRelease(m_session);
+			m_session = nullptr;
+			return false;
+		}
+		cemuLog_log(LogType::Force, "RTP: using direct Metal-to-VideoToolbox capture");
+		return true;
+	}
+
+	static void OnEncodedFrame(void* context, void* sourceFrameRefCon,
+		OSStatus status, VTEncodeInfoFlags, CMSampleBufferRef sampleBuffer)
+	{
+		auto* stream = static_cast<MetalVideoToolboxStream*>(context);
+	if (sourceFrameRefCon)
+		CVPixelBufferRelease(static_cast<CVPixelBufferRef>(sourceFrameRefCon));
+		if (status != noErr || !sampleBuffer)
+		{
+			if (!stream->m_encodeErrorLogged)
+			{
+				stream->m_encodeErrorLogged = true;
+				cemuLog_log(LogType::Force, "RTP: VideoToolbox encode failed: {}", status);
+			}
+			return;
+		}
+		stream->SendSampleBuffer(sampleBuffer);
+	}
+
+	void SendSampleBuffer(CMSampleBufferRef sampleBuffer)
+	{
+		CMBlockBufferRef block = CMSampleBufferGetDataBuffer(sampleBuffer);
+		if (!block)
+			return;
+
+		const bool keyframe = [](CMSampleBufferRef sample) {
+			CFArrayRef attachments = CMSampleBufferGetSampleAttachmentsArray(sample, false);
+			if (!attachments || CFArrayGetCount(attachments) == 0)
+				return true;
+			const CFDictionaryRef attachment =
+				static_cast<CFDictionaryRef>(CFArrayGetValueAtIndex(attachments, 0));
+			return !CFDictionaryContainsKey(attachment,
+				kCMSampleAttachmentKey_NotSync);
+		}(sampleBuffer);
+		const uint64 timestampUs = HighResolutionTimer::ticksToMicroseconds(
+			HighResolutionTimer::now().getTick());
+
+		if (keyframe)
+		{
+			CMFormatDescriptionRef format = CMSampleBufferGetFormatDescription(sampleBuffer);
+			size_t parameterSetCount = 0;
+			CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+				format, 0, nullptr, nullptr, &parameterSetCount, nullptr);
+			for (size_t index = 0; index < parameterSetCount; ++index)
+			{
+				const uint8* parameterSet = nullptr;
+				size_t parameterSetSize = 0;
+				CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
+					format, index, &parameterSet, &parameterSetSize,
+					nullptr, nullptr);
+				SendNal(parameterSet, parameterSetSize, timestampUs, false);
+			}
+		}
+
+		size_t length = 0;
+		char* data = nullptr;
+		if (CMBlockBufferGetDataPointer(block, 0, &length, nullptr, &data) != noErr)
+			return;
+		size_t offset = 0;
+		while (offset + 4 <= length)
+		{
+			const auto* bytes = reinterpret_cast<const uint8*>(data + offset);
+			const size_t nalSize = (static_cast<size_t>(bytes[0]) << 24) |
+				(static_cast<size_t>(bytes[1]) << 16) |
+				(static_cast<size_t>(bytes[2]) << 8) | bytes[3];
+			offset += 4;
+			if (nalSize == 0 || nalSize > length - offset)
+				break;
+			const bool marker = offset + nalSize == length;
+			SendNal(bytes + 4, nalSize, timestampUs, marker);
+			offset += nalSize;
+		}
+	}
+
+	void SendNal(const uint8* nal, size_t size, uint64 timestampUs, bool marker)
+	{
+		const uint32 timestamp = static_cast<uint32>(timestampUs * 90000 / 1000000);
+		std::scoped_lock lock(m_sendMutex);
+		if (size <= kRtpPayloadSize)
+		{
+			std::array<uint8, 12 + kRtpPayloadSize> packet{};
+			WriteHeader(packet.data(), timestamp, marker);
+			std::memcpy(packet.data() + 12, nal, size);
+			m_socket.SendTo(kRtpMulticastAddress, kRtpPort, packet.data(), 12 + size);
+			return;
+		}
+
+		const uint8 fuIndicator = (nal[0] & 0xE0) | 28;
+		const uint8 nalType = nal[0] & 0x1F;
+		const uint8* fragment = nal + 1;
+		size_t remaining = size - 1;
+		bool first = true;
+		while (remaining)
+		{
+			const size_t fragmentSize = std::min<size_t>(remaining, kRtpPayloadSize - 2);
+			const bool last = fragmentSize == remaining;
+			std::array<uint8, 12 + kRtpPayloadSize> packet{};
+			WriteHeader(packet.data(), timestamp, marker && last);
+			packet[12] = fuIndicator;
+			packet[13] = nalType | (first ? 0x80 : 0) | (last ? 0x40 : 0);
+			std::memcpy(packet.data() + 14, fragment, fragmentSize);
+			m_socket.SendTo(kRtpMulticastAddress, kRtpPort, packet.data(), 14 + fragmentSize);
+			fragment += fragmentSize;
+			remaining -= fragmentSize;
+			first = false;
+		}
+	}
+
+	void WriteHeader(uint8* header, uint32 timestamp, bool marker)
+	{
+		header[0] = 0x80;
+		header[1] = kRtpPayloadType | (marker ? 0x80 : 0);
+		WriteU16BigEndian(header + 2, m_sequence++);
+		WriteU32BigEndian(header + 4, timestamp);
+		WriteU32BigEndian(header + 8, m_ssrc);
+	}
+
+	void Run()
+	{
+		SetThreadName("RTP-GPU-Submit");
+		while (true)
+		{
+			{
+				std::unique_lock lock(m_mutex);
+				m_condition.wait(lock, [this]() {
+					return m_stopping || m_pendingFrame.pixelBuffer;
+				});
+				if (m_stopping)
+					break;
+				ReleasePending(m_inFlightFrame);
+				m_inFlightFrame = std::exchange(m_pendingFrame, PendingFrame{});
+			}
+
+			while (!m_stopping &&
+				m_inFlightFrame.commandBuffer->status() != MTL::CommandBufferStatusCompleted &&
+				m_inFlightFrame.commandBuffer->status() != MTL::CommandBufferStatusError)
+			{
+				std::this_thread::sleep_for(std::chrono::milliseconds(1));
+			}
+			if (m_stopping)
+				break;
+			if (m_inFlightFrame.commandBuffer->status() == MTL::CommandBufferStatusCompleted)
+			{
+				const CMTime timestamp = CMTimeMake(
+					HighResolutionTimer::ticksToMicroseconds(
+						HighResolutionTimer::now().getTick()), 1000000);
+				CVPixelBufferRetain(m_inFlightFrame.pixelBuffer);
+				const OSStatus result = VTCompressionSessionEncodeFrame(
+					m_session, m_inFlightFrame.pixelBuffer, timestamp,
+					kCMTimeInvalid, nullptr, m_inFlightFrame.pixelBuffer, nullptr);
+				if (result != noErr)
+					CVPixelBufferRelease(m_inFlightFrame.pixelBuffer);
+			}
+			ReleasePending(m_inFlightFrame);
+		}
+	}
+
+	UDPSocket m_socket;
+	uint32 m_ssrc{};
+	uint16 m_sequence{};
+	std::mutex m_sendMutex;
+	std::thread m_thread;
+	std::mutex m_mutex;
+	std::condition_variable m_condition;
+	bool m_stopping{};
+	PendingFrame m_pendingFrame{};
+	PendingFrame m_inFlightFrame{};
+
+	VTCompressionSessionRef m_session{};
+	MTL::Device* m_device{};
+	MTL::Library* m_computeLibrary{};
+	MTL::Function* m_computeFunction{};
+	MTL::ComputePipelineState* m_computePipeline{};
+	bool m_encodeErrorLogged{};
+};
+#endif
 
 class GamepadRTPWorker
 {
@@ -448,6 +901,10 @@ private:
 std::unique_ptr<GamepadRTPWorker> s_worker;
 std::mutex s_workerMutex;
 std::atomic<uint64> s_lastCaptureUs{};
+#if BOOST_OS_MACOS
+std::unique_ptr<MetalVideoToolboxStream> s_metalWorker;
+std::mutex s_metalWorkerMutex;
+#endif
 
 GamepadRTPWorker& GetWorker()
 {
@@ -456,6 +913,16 @@ GamepadRTPWorker& GetWorker()
 		s_worker = std::make_unique<GamepadRTPWorker>();
 	return *s_worker;
 }
+
+#if BOOST_OS_MACOS
+MetalVideoToolboxStream& GetMetalWorker()
+{
+	std::scoped_lock lock(s_metalWorkerMutex);
+	if (!s_metalWorker)
+		s_metalWorker = std::make_unique<MetalVideoToolboxStream>();
+	return *s_metalWorker;
+}
+#endif
 }
 
 namespace GamepadRTPStream
@@ -480,4 +947,13 @@ void SubmitFrame(std::vector<uint8>&& rgbData, sint32 width, sint32 height)
 		return;
 	GetWorker().Submit({std::move(rgbData), width, height});
 }
+
+#if BOOST_OS_MACOS
+void SubmitMetalFrame(MetalRenderer* renderer, MTL::Texture* texture)
+{
+	if (!GetConfig().host_gamepad_screen_rtp || !renderer || !texture)
+		return;
+	GetMetalWorker().Submit(renderer, texture);
+}
+#endif
 }

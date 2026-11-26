@@ -692,6 +692,13 @@ if (ENABLE_LIBUSB)
   endif ()
 endif()
 
+if (APPLE)
+  target_link_libraries(CemuCafe PRIVATE
+    "-framework CoreVideo"
+    "-framework VideoToolbox"
+  )
+endif()
+
 if(WIN32)
 	target_link_libraries(CemuCafe PRIVATE iphlpapi)
 endif()
