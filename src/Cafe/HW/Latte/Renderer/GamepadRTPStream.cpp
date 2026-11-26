@@ -1068,6 +1068,39 @@ private:
 			return false;
 		}
 
+		Microsoft::WRL::ComPtr<IMFMediaType> outputType;
+		MFCreateMediaType(&outputType);
+		outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+		outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
+		MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, m_width, m_height);
+		MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, m_fps, 1);
+		outputType->SetUINT32(MF_MT_AVG_BITRATE, m_bitrateKbps * 1000);
+		outputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+		outputType->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_Base);
+		outputType->SetUINT32(MF_MT_AVG_BITRATE, m_bitrateKbps * 1000);
+		MFSetAttributeRatio(outputType.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+		Microsoft::WRL::ComPtr<ICodecAPI> codec;
+		if (SUCCEEDED(m_transform.As(&codec)) && codec)
+		{
+			VARIANT value{};
+			value.vt = VT_BOOL;
+			value.boolVal = VARIANT_TRUE;
+			codec->SetValue(&CODECAPI_AVLowLatencyMode, &value);
+			value.vt = VT_UI4;
+			value.ulVal = eAVEncCommonRateControlMode_CBR;
+			codec->SetValue(&CODECAPI_AVEncCommonRateControlMode, &value);
+			value.ulVal = static_cast<ULONG>(m_bitrateKbps * 1000);
+			codec->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &value);
+			value.ulVal = 0;
+			codec->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &value);
+		}
+		result = m_transform->SetOutputType(0, outputType.Get(), 0);
+		if (FAILED(result))
+		{
+			LogHRESULT("H.264 output configuration", result);
+			return false;
+		}
+
 		Microsoft::WRL::ComPtr<IMFMediaType> inputType;
 		MFCreateMediaType(&inputType);
 		inputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
@@ -1081,34 +1114,6 @@ private:
 		{
 			LogHRESULT("NV12 input configuration", result);
 			return false;
-		}
-
-		Microsoft::WRL::ComPtr<IMFMediaType> outputType;
-		MFCreateMediaType(&outputType);
-		outputType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-		outputType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-		MFSetAttributeSize(outputType.Get(), MF_MT_FRAME_SIZE, m_width, m_height);
-		MFSetAttributeRatio(outputType.Get(), MF_MT_FRAME_RATE, m_fps, 1);
-		outputType->SetUINT32(MF_MT_AVG_BITRATE, m_bitrateKbps * 1000);
-		outputType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-		outputType->SetUINT32(MF_MT_MPEG2_PROFILE, eAVEncH264VProfile_High);
-		result = m_transform->SetOutputType(0, outputType.Get(), 0);
-		if (FAILED(result))
-		{
-			LogHRESULT("H.264 output configuration", result);
-			return false;
-		}
-
-		Microsoft::WRL::ComPtr<ICodecAPI> codec;
-		if (SUCCEEDED(m_transform.As(&codec)) && codec)
-		{
-			VARIANT value{};
-			value.vt = VT_BOOL;
-			value.boolVal = VARIANT_TRUE;
-			codec->SetValue(&CODECAPI_AVLowLatencyMode, &value);
-			value.ulVal = eAVEncCommonRateControlMode_Quality;
-			value.vt = VT_UI4;
-			codec->SetValue(&CODECAPI_AVEncCommonRateControlMode, &value);
 		}
 
 		m_transform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING, 0);
