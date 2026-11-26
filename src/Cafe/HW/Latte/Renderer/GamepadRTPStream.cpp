@@ -28,7 +28,7 @@
 #include <VideoToolbox/VideoToolbox.h>
 #endif
 
-#if !BOOST_OS_WINDOWS
+#if !BOOST_OS_WINDOWS && !BOOST_OS_MACOS
 extern "C"
 {
 #include <libavcodec/avcodec.h>
@@ -199,6 +199,57 @@ public:
 		});
 		renderer->CommitCommandBuffer();
 		destinationTexture->release();
+	}
+
+	void SubmitRGB(CaptureFrame&& frame)
+	{
+		if (!InitializeSession())
+			return;
+
+		CVPixelBufferRef pixelBuffer = nullptr;
+		const CVReturn cvResult = CVPixelBufferCreate(
+			kCFAllocatorDefault, m_width, m_height, kCVPixelFormatType_32BGRA,
+			nullptr, &pixelBuffer);
+		if (cvResult != kCVReturnSuccess || !pixelBuffer)
+			return;
+
+		if (CVPixelBufferLockBaseAddress(pixelBuffer, 0) != kCVReturnSuccess)
+		{
+			CVPixelBufferRelease(pixelBuffer);
+			return;
+		}
+		auto* destination = static_cast<uint8*>(CVPixelBufferGetBaseAddress(pixelBuffer));
+		const size_t stride = CVPixelBufferGetBytesPerRow(pixelBuffer);
+		const uint8* source = frame.rgbData.data();
+		for (sint32 y = 0; y < m_height; ++y)
+		{
+			const sint32 sourceY = y * frame.height / m_height;
+			uint8* row = destination + y * stride;
+			for (sint32 x = 0; x < m_width; ++x)
+			{
+				const sint32 sourceX = x * frame.width / m_width;
+				const sint32 sourceOffset = (sourceY * frame.width + sourceX) * 3;
+				row[x * 4] = source[sourceOffset + 2];
+				row[x * 4 + 1] = source[sourceOffset + 1];
+				row[x * 4 + 2] = source[sourceOffset];
+				row[x * 4 + 3] = 255;
+			}
+		}
+		CVPixelBufferUnlockBaseAddress(pixelBuffer, 0);
+
+		const uint64 timestampUs = HighResolutionTimer::ticksToMicroseconds(
+			HighResolutionTimer::now().getTick());
+		const CMTime timestamp = CMTimeMake(timestampUs, 1000000);
+		CVPixelBufferRetain(pixelBuffer);
+		{
+			std::scoped_lock lock(m_encodeMutex);
+			const OSStatus result = VTCompressionSessionEncodeFrame(
+				m_session, pixelBuffer, timestamp, kCMTimeInvalid,
+				nullptr, pixelBuffer, nullptr);
+			if (result != noErr)
+				CVPixelBufferRelease(pixelBuffer);
+		}
+		CVPixelBufferRelease(pixelBuffer);
 	}
 
 private:
@@ -515,7 +566,7 @@ private:
 };
 #endif
 
-#if !BOOST_OS_WINDOWS
+#if !BOOST_OS_WINDOWS && !BOOST_OS_MACOS
 class GamepadRTPWorker
 {
 public:
@@ -1463,16 +1514,19 @@ private:
 	bool m_errorLogged{};
 };
 
-std::unique_ptr<GamepadRTPWorker> s_worker;
-std::mutex s_workerMutex;
 std::unique_ptr<GamepadAudioRTPWorker> s_audioWorker;
 std::mutex s_audioWorkerMutex;
 std::atomic<uint64> s_lastCaptureUs{};
+#if !BOOST_OS_MACOS
+std::unique_ptr<GamepadRTPWorker> s_worker;
+std::mutex s_workerMutex;
+#endif
 #if BOOST_OS_MACOS
 std::unique_ptr<MetalVideoToolboxStream> s_metalWorker;
 std::mutex s_metalWorkerMutex;
 #endif
 
+#if !BOOST_OS_MACOS
 GamepadRTPWorker& GetWorker()
 {
 	std::scoped_lock lock(s_workerMutex);
@@ -1480,6 +1534,7 @@ GamepadRTPWorker& GetWorker()
 		s_worker = std::make_unique<GamepadRTPWorker>();
 	return *s_worker;
 }
+#endif
 
 #if BOOST_OS_MACOS
 MetalVideoToolboxStream& GetMetalWorker()
@@ -1502,10 +1557,12 @@ void Shutdown()
 		s_metalWorker.reset();
 	}
 #endif
+#if !BOOST_OS_MACOS
 	{
 		std::scoped_lock lock(s_workerMutex);
 		s_worker.reset();
 	}
+#endif
 	{
 		std::scoped_lock lock(s_audioWorkerMutex);
 		s_audioWorker.reset();
@@ -1533,7 +1590,11 @@ void SubmitFrame(std::vector<uint8>&& rgbData, sint32 width, sint32 height)
 {
 	if (!GetConfig().host_gamepad_screen_rtp || rgbData.empty() || width <= 0 || height <= 0)
 		return;
+#if BOOST_OS_MACOS
+	GetMetalWorker().SubmitRGB({std::move(rgbData), width, height});
+#else
 	GetWorker().Submit({std::move(rgbData), width, height});
+#endif
 }
 
 void SubmitAudio(const sint16* samples, sint32 sampleCount, sint32 channels)

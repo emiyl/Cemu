@@ -39,7 +39,7 @@
         "swscale",
         "x264"
       ],
-      "platform": "!windows"
+      "platform": "!windows & !osx"
     },
     "glm",
     {

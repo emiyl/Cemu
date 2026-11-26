@@ -662,7 +662,7 @@ target_link_libraries(CemuCafe PRIVATE
   OpenSSL::SSL
 )
 
-if (NOT WIN32)
+if (NOT WIN32 AND NOT APPLE)
   if (ENABLE_VCPKG)
     target_include_directories(CemuCafe PRIVATE ${FFMPEG_INCLUDE_DIRS})
     target_link_directories(CemuCafe PRIVATE ${FFMPEG_LIBRARY_DIRS})
