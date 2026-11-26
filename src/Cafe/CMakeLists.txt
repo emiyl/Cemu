@@ -662,16 +662,18 @@ target_link_libraries(CemuCafe PRIVATE
   OpenSSL::SSL
 )
 
-if (ENABLE_VCPKG)
-  target_include_directories(CemuCafe PRIVATE ${FFMPEG_INCLUDE_DIRS})
-  target_link_directories(CemuCafe PRIVATE ${FFMPEG_LIBRARY_DIRS})
-  target_link_libraries(CemuCafe PRIVATE ${FFMPEG_LIBRARIES})
-else()
-  target_link_libraries(CemuCafe PRIVATE
-    PkgConfig::AVCODEC
-    PkgConfig::AVUTIL
-    PkgConfig::SWSCALE
-  )
+if (NOT WIN32)
+  if (ENABLE_VCPKG)
+    target_include_directories(CemuCafe PRIVATE ${FFMPEG_INCLUDE_DIRS})
+    target_link_directories(CemuCafe PRIVATE ${FFMPEG_LIBRARY_DIRS})
+    target_link_libraries(CemuCafe PRIVATE ${FFMPEG_LIBRARIES})
+  else()
+    target_link_libraries(CemuCafe PRIVATE
+      PkgConfig::AVCODEC
+      PkgConfig::AVUTIL
+      PkgConfig::SWSCALE
+    )
+  endif()
 endif()
 
 if (ENABLE_WAYLAND)
@@ -701,5 +703,12 @@ if (APPLE)
 endif()
 
 if(WIN32)
-	target_link_libraries(CemuCafe PRIVATE iphlpapi)
+	target_link_libraries(CemuCafe PRIVATE
+	  iphlpapi
+	  mfplat
+	  mf
+	  mfuuid
+	  ole32
+	  wmcodecdspuuid
+	)
 endif()

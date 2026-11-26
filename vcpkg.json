@@ -38,7 +38,8 @@
         "avcodec",
         "swscale",
         "x264"
-      ]
+      ],
+      "platform": "!windows"
     },
     "glm",
     {
