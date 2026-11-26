@@ -60,28 +60,19 @@ struct CaptureFrame
 #if BOOST_OS_MACOS
 class MetalVideoToolboxStream
 {
-	struct PendingFrame
-	{
-		CVPixelBufferRef pixelBuffer{};
-		MTL::CommandBuffer* commandBuffer{};
-	};
-
 public:
 	MetalVideoToolboxStream()
 		: m_ssrc(CreateSsrc())
 	{
-		m_thread = std::thread(&MetalVideoToolboxStream::Run, this);
 	}
 
 	~MetalVideoToolboxStream()
 	{
 		{
-			std::scoped_lock lock(m_mutex);
+			std::unique_lock lock(m_mutex);
 			m_stopping = true;
+			m_condition.wait(lock, [this]() { return m_activeCallbacks == 0; });
 		}
-		m_condition.notify_all();
-		m_thread.join();
-		DiscardPending();
 		if (m_session)
 		{
 			VTCompressionSessionCompleteFrames(m_session, kCMTimeInvalid);
@@ -98,14 +89,15 @@ public:
 
 	void Submit(MetalRenderer* renderer, MTL::Texture* sourceTexture)
 	{
-		{
-			std::scoped_lock lock(m_mutex);
-			if (m_pendingFrame.pixelBuffer)
-				return;
-		}
+		const uint64 submitTimestampUs = HighResolutionTimer::ticksToMicroseconds(
+			HighResolutionTimer::now().getTick());
+		bool expected = false;
+		if (!m_pendingCapture.compare_exchange_strong(expected, true))
+			return;
 		if (!InitializeComputePipeline(renderer->GetDevice()) ||
 			!InitializeSession())
 		{
+			m_pendingCapture = false;
 			return;
 		}
 
@@ -135,7 +127,10 @@ public:
 			kCVPixelFormatType_32BGRA, pixelAttributes, &pixelBuffer);
 		CFRelease(pixelAttributes);
 		if (cvResult != kCVReturnSuccess || !pixelBuffer)
+		{
+			m_pendingCapture = false;
 			return;
+		}
 
 		auto* descriptor = MTL::TextureDescriptor::alloc()->init();
 		descriptor->setTextureType(MTL::TextureType2D);
@@ -151,6 +146,7 @@ public:
 		if (!destinationTexture)
 		{
 			CVPixelBufferRelease(pixelBuffer);
+			m_pendingCapture = false;
 			return;
 		}
 
@@ -168,20 +164,25 @@ public:
 		renderer->EndEncoding();
 
 		MTL::CommandBuffer* commandBuffer = renderer->GetCurrentCommandBuffer()->retain();
-		renderer->CommitCommandBuffer();
-		destinationTexture->release();
-
 		{
 			std::scoped_lock lock(m_mutex);
-			if (m_pendingFrame.pixelBuffer)
-			{
-				commandBuffer->release();
-				CVPixelBufferRelease(pixelBuffer);
-			}
-			else
-				m_pendingFrame = {pixelBuffer, commandBuffer};
+			++m_activeCallbacks;
 		}
-		m_condition.notify_one();
+		commandBuffer->addCompletedHandler([this, pixelBuffer, commandBuffer,
+											 submitTimestampUs](MTL::CommandBuffer* completedBuffer) {
+			if (completedBuffer->status() == MTL::CommandBufferStatusCompleted && !m_stopping)
+				EncodeCompletedFrame(pixelBuffer, submitTimestampUs);
+			commandBuffer->release();
+			CVPixelBufferRelease(pixelBuffer);
+			{
+				std::scoped_lock lock(m_mutex);
+				--m_activeCallbacks;
+			}
+			m_pendingCapture = false;
+			m_condition.notify_all();
+		});
+		renderer->CommitCommandBuffer();
+		destinationTexture->release();
 	}
 
 private:
@@ -196,20 +197,19 @@ private:
 		return CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value);
 	}
 
-	static void ReleasePending(PendingFrame& pending)
+	void EncodeCompletedFrame(CVPixelBufferRef pixelBuffer, uint64 submitTimestampUs)
 	{
-		if (pending.commandBuffer)
-			pending.commandBuffer->release();
-		if (pending.pixelBuffer)
-			CVPixelBufferRelease(pending.pixelBuffer);
-		pending = {};
-	}
-
-	void DiscardPending()
-	{
-		std::scoped_lock lock(m_mutex);
-		ReleasePending(m_pendingFrame);
-		ReleasePending(m_inFlightFrame);
+		const uint64 nowUs = HighResolutionTimer::ticksToMicroseconds(
+			HighResolutionTimer::now().getTick());
+		m_lastMetalCompletionUs = nowUs > submitTimestampUs ? nowUs - submitTimestampUs : 0;
+		const CMTime timestamp = CMTimeMake(submitTimestampUs, 1000000);
+		CVPixelBufferRetain(pixelBuffer);
+		std::scoped_lock lock(m_encodeMutex);
+		const OSStatus result = VTCompressionSessionEncodeFrame(
+			m_session, pixelBuffer, timestamp, kCMTimeInvalid,
+			nullptr, pixelBuffer, nullptr);
+		if (result != noErr)
+			CVPixelBufferRelease(pixelBuffer);
 	}
 
 	bool InitializeComputePipeline(MTL::Device* device)
@@ -329,8 +329,8 @@ private:
 		OSStatus status, VTEncodeInfoFlags, CMSampleBufferRef sampleBuffer)
 	{
 		auto* stream = static_cast<MetalVideoToolboxStream*>(context);
-	if (sourceFrameRefCon)
-		CVPixelBufferRelease(static_cast<CVPixelBufferRef>(sourceFrameRefCon));
+		if (sourceFrameRefCon)
+			CVPixelBufferRelease(static_cast<CVPixelBufferRef>(sourceFrameRefCon));
 		if (status != noErr || !sampleBuffer)
 		{
 			if (!stream->m_encodeErrorLogged)
@@ -358,8 +358,18 @@ private:
 			return !CFDictionaryContainsKey(attachment,
 				kCMSampleAttachmentKey_NotSync);
 		}(sampleBuffer);
-		const uint64 timestampUs = HighResolutionTimer::ticksToMicroseconds(
+		const CMTime presentationTime = CMSampleBufferGetPresentationTimeStamp(sampleBuffer);
+		const uint64 timestampUs = static_cast<uint64>(
+			CMTimeGetSeconds(presentationTime) * 1000000.0);
+		const uint64 nowUs = HighResolutionTimer::ticksToMicroseconds(
 			HighResolutionTimer::now().getTick());
+		const uint64 encodeLatencyUs = nowUs > timestampUs ? nowUs - timestampUs : 0;
+		if (++m_encodedFrames == 1 || m_encodedFrames % kVideoFps == 0)
+		{
+			cemuLog_log(LogType::Force,
+				"RTP: sender latency GPU {} us, VideoToolbox {} us",
+				m_lastMetalCompletionUs.load(), encodeLatencyUs);
+		}
 
 		if (keyframe)
 		{
@@ -441,56 +451,18 @@ private:
 		WriteU32BigEndian(header + 8, m_ssrc);
 	}
 
-	void Run()
-	{
-		SetThreadName("RTP-GPU-Submit");
-		while (true)
-		{
-			{
-				std::unique_lock lock(m_mutex);
-				m_condition.wait(lock, [this]() {
-					return m_stopping || m_pendingFrame.pixelBuffer;
-				});
-				if (m_stopping)
-					break;
-				ReleasePending(m_inFlightFrame);
-				m_inFlightFrame = std::exchange(m_pendingFrame, PendingFrame{});
-			}
-
-			while (!m_stopping &&
-				m_inFlightFrame.commandBuffer->status() != MTL::CommandBufferStatusCompleted &&
-				m_inFlightFrame.commandBuffer->status() != MTL::CommandBufferStatusError)
-			{
-				std::this_thread::sleep_for(std::chrono::milliseconds(1));
-			}
-			if (m_stopping)
-				break;
-			if (m_inFlightFrame.commandBuffer->status() == MTL::CommandBufferStatusCompleted)
-			{
-				const CMTime timestamp = CMTimeMake(
-					HighResolutionTimer::ticksToMicroseconds(
-						HighResolutionTimer::now().getTick()), 1000000);
-				CVPixelBufferRetain(m_inFlightFrame.pixelBuffer);
-				const OSStatus result = VTCompressionSessionEncodeFrame(
-					m_session, m_inFlightFrame.pixelBuffer, timestamp,
-					kCMTimeInvalid, nullptr, m_inFlightFrame.pixelBuffer, nullptr);
-				if (result != noErr)
-					CVPixelBufferRelease(m_inFlightFrame.pixelBuffer);
-			}
-			ReleasePending(m_inFlightFrame);
-		}
-	}
-
 	UDPSocket m_socket;
 	uint32 m_ssrc{};
 	uint16 m_sequence{};
 	std::mutex m_sendMutex;
-	std::thread m_thread;
 	std::mutex m_mutex;
 	std::condition_variable m_condition;
-	bool m_stopping{};
-	PendingFrame m_pendingFrame{};
-	PendingFrame m_inFlightFrame{};
+	std::atomic_bool m_stopping{};
+	uint32 m_activeCallbacks{};
+	std::atomic_bool m_pendingCapture{};
+	std::mutex m_encodeMutex;
+	std::atomic<uint64> m_lastMetalCompletionUs{};
+	std::atomic<uint64> m_encodedFrames{};
 
 	VTCompressionSessionRef m_session{};
 	MTL::Device* m_device{};
