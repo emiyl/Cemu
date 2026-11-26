@@ -419,6 +419,12 @@ struct CemuConfig
 #undef DISABLE_SCREENSAVER_DEFAULT
 	ConfigValue<bool> play_boot_sound{false};
 	ConfigValue<bool> host_gamepad_screen_rtp{false};
+	ConfigValue<std::string> rtp_address{"239.255.0.1"};
+	ConfigValue<sint32> rtp_port{5004};
+	ConfigValue<sint32> rtp_width{854};
+	ConfigValue<sint32> rtp_height{480};
+	ConfigValue<sint32> rtp_fps{60};
+	ConfigValue<sint32> rtp_bitrate_kbps{6000};
 
 	std::vector<std::string> game_paths;
 	std::mutex game_cache_entries_mutex;

@@ -14,6 +14,9 @@ class wxSlider;
 class wxSpinCtrl;
 class wxSpinCtrlDouble;
 class wxStaticText;
+class wxButton;
+class wxStaticBoxSizer;
+class wxTextCtrl;
 
 wxDECLARE_EVENT(wxEVT_ACCOUNTLIST_REFRESH, wxCommandEvent);
 
@@ -56,6 +59,13 @@ private:
 	wxCheckBox* m_disable_screensaver;
 	wxCheckBox* m_play_boot_sound;
 	wxCheckBox* m_host_gamepad_screen_rtp;
+	wxPanel* m_rtp_streaming_panel;
+	wxTextCtrl* m_rtp_address;
+	wxSpinCtrl* m_rtp_port;
+	wxChoice* m_rtp_resolution;
+	wxSpinCtrl* m_rtp_fps;
+	wxSpinCtrl* m_rtp_bitrate;
+	wxButton* m_rtp_save_sdp;
 #if BOOST_OS_WINDOWS
 	wxChoice* m_msw_theme;
 #endif
@@ -125,6 +135,7 @@ private:
 	void OnActiveAccountChanged(wxCommandEvent& event);
 	void OnMLCPathSelect(wxCommandEvent& event);
 	void OnMLCPathClear(wxCommandEvent& event);
+	void OnSaveRTPDescription(wxCommandEvent& event);
 	void OnShowOnlineValidator(wxCommandEvent& event);
 	void OnAccountServiceChanged(wxCommandEvent& event);
 	static wxString GetOnlineAccountErrorMessage(OnlineAccountError error);

@@ -27,14 +27,8 @@ extern "C"
 
 namespace
 {
-constexpr sint32 kVideoWidth = 854;
-constexpr sint32 kVideoHeight = 480;
-constexpr sint32 kVideoFps = 60;
-constexpr sint32 kFrameIntervalUs = 1000000 / kVideoFps - 1000;
 constexpr sint32 kRtpPayloadSize = 1200;
 constexpr uint8 kRtpPayloadType = 96;
-constexpr uint16 kRtpPort = 5004;
-constexpr SocketIPv4 kRtpMulticastAddress = 0xEFFF0001; // 239.255.0.1
 
 void WriteU16BigEndian(uint8* destination, uint16 value)
 {
@@ -62,7 +56,13 @@ class MetalVideoToolboxStream
 {
 public:
 	MetalVideoToolboxStream()
-		: m_ssrc(CreateSsrc())
+		: m_ssrc(CreateSsrc()),
+		  m_address(ResolveAddress()),
+		  m_port(static_cast<uint16>(GetConfig().rtp_port)),
+		  m_width(static_cast<sint32>(GetConfig().rtp_width)),
+		  m_height(static_cast<sint32>(GetConfig().rtp_height)),
+		  m_fps(static_cast<sint32>(GetConfig().rtp_fps)),
+		  m_bitrateKbps(static_cast<sint32>(GetConfig().rtp_bitrate_kbps))
 	{
 	}
 
@@ -105,8 +105,8 @@ public:
 			kCFAllocatorDefault, 0, &kCFTypeDictionaryKeyCallBacks,
 			&kCFTypeDictionaryValueCallBacks);
 		CFNumberRef pixelFormat = CreateNumber(kCVPixelFormatType_32BGRA);
-		CFNumberRef width = CreateNumber(kVideoWidth);
-		CFNumberRef height = CreateNumber(kVideoHeight);
+		CFNumberRef width = CreateNumber(m_width);
+		CFNumberRef height = CreateNumber(m_height);
 		CFDictionaryRef iosurfaceProperties =
 			CFDictionaryCreate(kCFAllocatorDefault, nullptr, nullptr, 0,
 				&kCFTypeDictionaryKeyCallBacks, &kCFTypeDictionaryValueCallBacks);
@@ -123,7 +123,7 @@ public:
 
 		CVPixelBufferRef pixelBuffer = nullptr;
 		const CVReturn cvResult = CVPixelBufferCreate(
-			kCFAllocatorDefault, kVideoWidth, kVideoHeight,
+			kCFAllocatorDefault, m_width, m_height,
 			kCVPixelFormatType_32BGRA, pixelAttributes, &pixelBuffer);
 		CFRelease(pixelAttributes);
 		if (cvResult != kCVReturnSuccess || !pixelBuffer)
@@ -135,8 +135,8 @@ public:
 		auto* descriptor = MTL::TextureDescriptor::alloc()->init();
 		descriptor->setTextureType(MTL::TextureType2D);
 		descriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
-		descriptor->setWidth(kVideoWidth);
-		descriptor->setHeight(kVideoHeight);
+		descriptor->setWidth(m_width);
+		descriptor->setHeight(m_height);
 		descriptor->setMipmapLevelCount(1);
 		descriptor->setUsage(MTL::TextureUsageShaderWrite);
 		descriptor->setStorageMode(MTL::StorageModeShared);
@@ -162,7 +162,7 @@ public:
 				m_computePipeline->threadExecutionWidth()),
 			1
 		};
-		encoder->dispatchThreads({kVideoWidth, kVideoHeight, 1}, threadsPerThreadgroup);
+		encoder->dispatchThreads({(NS::UInteger)m_width, (NS::UInteger)m_height, 1}, threadsPerThreadgroup);
 		renderer->EndEncoding();
 
 		MTL::CommandBuffer* commandBuffer = renderer->GetCurrentCommandBuffer()->retain();
@@ -197,6 +197,16 @@ private:
 	static CFNumberRef CreateNumber(sint32 value)
 	{
 		return CFNumberCreate(kCFAllocatorDefault, kCFNumberSInt32Type, &value);
+	}
+
+	static SocketIPv4 ResolveAddress()
+	{
+		const auto address = UDPSocket::Resolve(GetConfig().rtp_address.GetValue());
+		if (address)
+			return *address;
+		cemuLog_log(LogType::Force, "RTP: unable to resolve destination {}",
+			GetConfig().rtp_address.GetValue());
+		return 0;
 	}
 
 	void EncodeCompletedFrame(CVPixelBufferRef pixelBuffer, uint64 submitTimestampUs)
@@ -289,12 +299,12 @@ private:
 			CFRelease(number);
 		};
 		SetNumber(kCVPixelBufferPixelFormatTypeKey, kCVPixelFormatType_32BGRA);
-		SetNumber(kCVPixelBufferWidthKey, kVideoWidth);
-		SetNumber(kCVPixelBufferHeightKey, kVideoHeight);
+		SetNumber(kCVPixelBufferWidthKey, m_width);
+		SetNumber(kCVPixelBufferHeightKey, m_height);
 		CFDictionarySetValue(sourceAttributes, kCVPixelBufferMetalCompatibilityKey, kCFBooleanTrue);
 
 		const OSStatus status = VTCompressionSessionCreate(
-			kCFAllocatorDefault, kVideoWidth, kVideoHeight,
+			kCFAllocatorDefault, m_width, m_height,
 			kCMVideoCodecType_H264, nullptr, sourceAttributes,
 			nullptr, &OnEncodedFrame, this, &m_session);
 		CFRelease(sourceAttributes);
@@ -313,13 +323,13 @@ private:
 		SetSessionProperty(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse);
 		SetSessionProperty(kVTCompressionPropertyKey_ProfileLevel,
 			kVTProfileLevel_H264_Baseline_AutoLevel);
-		CFNumberRef bitRate = CreateNumber(6'000'000);
+		CFNumberRef bitRate = CreateNumber(m_bitrateKbps * 1000);
 		SetSessionProperty(kVTCompressionPropertyKey_AverageBitRate, bitRate);
 		CFRelease(bitRate);
-		CFNumberRef fps = CreateNumber(kVideoFps);
+		CFNumberRef fps = CreateNumber(m_fps);
 		SetSessionProperty(kVTCompressionPropertyKey_ExpectedFrameRate, fps);
 		CFRelease(fps);
-		CFNumberRef keyframeInterval = CreateNumber(kVideoFps);
+		CFNumberRef keyframeInterval = CreateNumber(m_fps);
 		SetSessionProperty(kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval);
 		CFRelease(keyframeInterval);
 		CFNumberRef zeroDelay = CreateNumber(0);
@@ -376,7 +386,7 @@ private:
 		const uint64 nowUs = HighResolutionTimer::ticksToMicroseconds(
 			HighResolutionTimer::now().getTick());
 		const uint64 encodeLatencyUs = nowUs > timestampUs ? nowUs - timestampUs : 0;
-		if (++m_encodedFrames == 1 || m_encodedFrames % kVideoFps == 0)
+		if (++m_encodedFrames == 1 || m_encodedFrames % m_fps == 0)
 		{
 			cemuLog_log(LogType::Force,
 				"RTP: sender latency GPU {} us, VideoToolbox {} us",
@@ -429,7 +439,7 @@ private:
 			std::array<uint8, 12 + kRtpPayloadSize> packet{};
 			WriteHeader(packet.data(), timestamp, marker);
 			std::memcpy(packet.data() + 12, nal, size);
-			m_socket.SendTo(kRtpMulticastAddress, kRtpPort, packet.data(), 12 + size);
+			m_socket.SendTo(m_address, m_port, packet.data(), 12 + size);
 			return;
 		}
 
@@ -447,7 +457,7 @@ private:
 			packet[12] = fuIndicator;
 			packet[13] = nalType | (first ? 0x80 : 0) | (last ? 0x40 : 0);
 			std::memcpy(packet.data() + 14, fragment, fragmentSize);
-			m_socket.SendTo(kRtpMulticastAddress, kRtpPort, packet.data(), 14 + fragmentSize);
+			m_socket.SendTo(m_address, m_port, packet.data(), 14 + fragmentSize);
 			fragment += fragmentSize;
 			remaining -= fragmentSize;
 			first = false;
@@ -466,6 +476,12 @@ private:
 	UDPSocket m_socket;
 	uint32 m_ssrc{};
 	uint16 m_sequence{};
+	SocketIPv4 m_address;
+	uint16 m_port;
+	sint32 m_width;
+	sint32 m_height;
+	sint32 m_fps;
+	sint32 m_bitrateKbps;
 	std::mutex m_sendMutex;
 	std::mutex m_mutex;
 	std::condition_variable m_condition;
@@ -490,7 +506,13 @@ class GamepadRTPWorker
 public:
 	GamepadRTPWorker()
 		: m_socket{},
-		  m_ssrc(CreateSsrc())
+		  m_ssrc(CreateSsrc()),
+		  m_address(ResolveAddress()),
+		  m_port(static_cast<uint16>(GetConfig().rtp_port)),
+		  m_width(static_cast<sint32>(GetConfig().rtp_width)),
+		  m_height(static_cast<sint32>(GetConfig().rtp_height)),
+		  m_fps(static_cast<sint32>(GetConfig().rtp_fps)),
+		  m_bitrateKbps(static_cast<sint32>(GetConfig().rtp_bitrate_kbps))
 	{
 		m_thread = std::thread(&GamepadRTPWorker::Run, this);
 	}
@@ -519,6 +541,16 @@ private:
 	{
 		std::random_device randomDevice;
 		return static_cast<uint32>(randomDevice());
+	}
+
+	static SocketIPv4 ResolveAddress()
+	{
+		const auto address = UDPSocket::Resolve(GetConfig().rtp_address.GetValue());
+		if (address)
+			return *address;
+		cemuLog_log(LogType::Force, "RTP: unable to resolve destination {}",
+			GetConfig().rtp_address.GetValue());
+		return 0;
 	}
 
 	static const AVCodec* FindEncoder()
@@ -553,8 +585,8 @@ private:
 			return false;
 		}
 
-		m_codecContext->width = kVideoWidth;
-		m_codecContext->height = kVideoHeight;
+		m_codecContext->width = m_width;
+		m_codecContext->height = m_height;
 		const char* codecName = codec->name ? codec->name : "";
 		const AVPixelFormat outputFormat =
 			std::string_view(codecName) == "h264_videotoolbox" ||
@@ -562,10 +594,10 @@ private:
 				? AV_PIX_FMT_NV12
 				: AV_PIX_FMT_YUV420P;
 		m_codecContext->pix_fmt = outputFormat;
-		m_codecContext->time_base = {1, kVideoFps};
-		m_codecContext->framerate = {kVideoFps, 1};
-		m_codecContext->bit_rate = 6'000'000;
-		m_codecContext->gop_size = kVideoFps;
+		m_codecContext->time_base = {1, m_fps};
+		m_codecContext->framerate = {m_fps, 1};
+		m_codecContext->bit_rate = static_cast<sint64>(m_bitrateKbps) * 1000;
+		m_codecContext->gop_size = m_fps;
 		m_codecContext->max_b_frames = 0;
 		m_codecContext->flags |= AV_CODEC_FLAG_LOW_DELAY;
 		m_codecContext->refs = 1;
@@ -608,7 +640,9 @@ private:
 			return false;
 		}
 
-		cemuLog_log(LogType::Force, "RTP: streaming gamepad screen at 854x480, 60 fps to 239.255.0.1:5004 using {}", codecName);
+		cemuLog_log(LogType::Force,
+			"RTP: streaming gamepad screen at {}x{}, {} fps to {}:{} using {}",
+			m_width, m_height, m_fps, GetConfig().rtp_address.GetValue(), m_port, codecName);
 		return true;
 	}
 
@@ -637,7 +671,7 @@ private:
 			sws_freeContext(m_scaler);
 			m_scaler = sws_getContext(
 				frame.width, frame.height, AV_PIX_FMT_RGB24,
-				kVideoWidth, kVideoHeight, m_codecContext->pix_fmt,
+				m_width, m_height, m_codecContext->pix_fmt,
 				SWS_BILINEAR, nullptr, nullptr, nullptr);
 			m_sourceWidth = frame.width;
 			m_sourceHeight = frame.height;
@@ -649,7 +683,7 @@ private:
 		const uint8* source[] = {frame.rgbData.data(), nullptr, nullptr, nullptr};
 		const sint32 sourceStride[] = {frame.width * 3, 0, 0, 0};
 		if (sws_scale(m_scaler, source, sourceStride, 0, frame.height,
-					  m_frame->data, m_frame->linesize) != kVideoHeight)
+					  m_frame->data, m_frame->linesize) != m_height)
 		{
 			return false;
 		}
@@ -788,7 +822,7 @@ private:
 		if (nalSize == 0)
 			return;
 
-		const uint32 timestamp = static_cast<uint32>(std::max<sint64>(pts, 0) * 90000 / kVideoFps);
+		const uint32 timestamp = static_cast<uint32>(std::max<sint64>(pts, 0) * 90000 / m_fps);
 		if (nalSize <= kRtpPayloadSize)
 		{
 			std::array<uint8, 12 + kRtpPayloadSize> packet{};
@@ -831,10 +865,11 @@ private:
 
 	void SendPacket(const uint8* packet, size_t size)
 	{
-		if (!m_socket.SendTo(kRtpMulticastAddress, kRtpPort, packet, size) && !m_sendErrorLogged)
+		if (!m_socket.SendTo(m_address, m_port, packet, size) && !m_sendErrorLogged)
 		{
 			m_sendErrorLogged = true;
-			cemuLog_log(LogType::Force, "RTP: failed to send to 239.255.0.1:5004");
+			cemuLog_log(LogType::Force, "RTP: failed to send to {}:{}",
+				GetConfig().rtp_address.GetValue(), m_port);
 		}
 	}
 
@@ -879,6 +914,12 @@ private:
 	sint64 m_frameNumber{};
 	uint16 m_sequence{};
 	uint32 m_ssrc{};
+	SocketIPv4 m_address;
+	uint16 m_port;
+	sint32 m_width;
+	sint32 m_height;
+	sint32 m_fps;
+	sint32 m_bitrateKbps;
 	bool m_sendErrorLogged{};
 };
 
@@ -931,9 +972,11 @@ bool ShouldCaptureFrame()
 	if (!GetConfig().host_gamepad_screen_rtp)
 		return false;
 
+	const uint64 frameIntervalUs =
+		1000000 / std::max<sint32>(GetConfig().rtp_fps, 1) - 1000;
 	const uint64 now = HighResolutionTimer::ticksToMicroseconds(HighResolutionTimer::now().getTick());
 	uint64 previous = s_lastCaptureUs.load(std::memory_order_relaxed);
-	if (now < previous || now - previous < kFrameIntervalUs)
+	if (frameIntervalUs > 0 && (now < previous || now - previous < frameIntervalUs))
 		return false;
 
 	return s_lastCaptureUs.compare_exchange_strong(

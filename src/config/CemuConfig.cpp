@@ -31,6 +31,12 @@ XMLConfigParser CemuConfig::Load(XMLConfigParser& parser)
 	disable_screensaver = parser.get("disable_screensaver", disable_screensaver);
 	play_boot_sound = parser.get("play_boot_sound", play_boot_sound);
 	host_gamepad_screen_rtp = parser.get("host_gamepad_screen_rtp", host_gamepad_screen_rtp);
+	rtp_address = parser.get("rtp_address", rtp_address);
+	rtp_port = parser.get("rtp_port", rtp_port);
+	rtp_width = parser.get("rtp_width", rtp_width);
+	rtp_height = parser.get("rtp_height", rtp_height);
+	rtp_fps = parser.get("rtp_fps", rtp_fps);
+	rtp_bitrate_kbps = parser.get("rtp_bitrate_kbps", rtp_bitrate_kbps);
 	console_language = parser.get("console_language", console_language.GetInitValue());
 
 	game_paths.clear();
@@ -306,6 +312,12 @@ XMLConfigParser CemuConfig::Save(XMLConfigParser& parser)
 	config.set<bool>("disable_screensaver", disable_screensaver);
 	config.set<bool>("play_boot_sound", play_boot_sound);
 	config.set<bool>("host_gamepad_screen_rtp", host_gamepad_screen_rtp);
+	config.set("rtp_address", rtp_address.GetValue().c_str());
+	config.set("rtp_port", rtp_port);
+	config.set("rtp_width", rtp_width);
+	config.set("rtp_height", rtp_height);
+	config.set("rtp_fps", rtp_fps);
+	config.set("rtp_bitrate_kbps", rtp_bitrate_kbps);
 
 	// config.set("cpu_mode", cpu_mode.GetValue());
 	//config.set("console_region", console_region.GetValue());

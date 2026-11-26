@@ -14,6 +14,9 @@
 #include <wx/textctrl.h>
 #include <wx/textdlg.h>
 #include <wx/hyperlink.h>
+#include <wx/filedlg.h>
+#include <wx/spinctrl.h>
+#include <wx/stdpaths.h>
 
 #include "config/CemuConfig.h"
 #include "config/NetworkSettings.h"
@@ -51,6 +54,7 @@
 #include "resource/embedded/resources.h"
 
 #include "Cafe/CafeSystem.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
 #include "Cemu/ncrypto/ncrypto.h"
 #include "Cafe/TitleList/TitleList.h"
 #include "wxHelper.h"
@@ -68,6 +72,29 @@ const wxString kPropertyBirthday("Birthday");
 const wxString kPropertyGender("Gender");
 const wxString kPropertyEmail("Email");
 const wxString kPropertyCountry("Country");
+
+struct RTPResolution
+{
+	uint16 width;
+	uint16 height;
+
+	wxString ToString() const
+	{
+		return wxString::Format("%ux%u", width, height);
+	}
+};
+
+constexpr std::array kRTPResolutions{
+	RTPResolution{854, 480},
+	RTPResolution{960, 540},
+	RTPResolution{1280, 720},
+	RTPResolution{1920, 1080},
+};
+
+const RTPResolution& GetRTPResolution(uint32 selection)
+{
+	return kRTPResolutions[selection < kRTPResolutions.size() ? selection : 0];
+}
 
 wxDEFINE_EVENT(wxEVT_ACCOUNTLIST_REFRESH, wxCommandEvent);
 
@@ -257,7 +284,7 @@ wxPanel* GeneralSettings2::AddGeneralPage(wxNotebook* notebook)
 			CountRowElement();
 
 			m_host_gamepad_screen_rtp = new wxCheckBox(box, wxID_ANY, _("Host gamepad screen over RTP"));
-			m_host_gamepad_screen_rtp->SetToolTip(_("Streams the gamepad screen as low-latency 854x480 H.264 at 60 fps to RTP multicast 239.255.0.1:5004"));
+			m_host_gamepad_screen_rtp->SetToolTip(_("Streams the gamepad screen as low-latency H.264 over RTP"));
 			third_row->Add(m_host_gamepad_screen_rtp, 0, botflag, 5);
 			CountRowElement();
 
@@ -282,6 +309,53 @@ wxPanel* GeneralSettings2::AddGeneralPage(wxNotebook* notebook)
 
 		general_panel_sizer->Add(box_sizer, 0, wxEXPAND | wxALL, 5);
 	}
+
+	m_rtp_streaming_panel = new wxPanel(panel);
+	auto* rtp_sizer = new wxBoxSizer(wxVERTICAL);
+	auto* rtp_box = new wxStaticBox(m_rtp_streaming_panel, wxID_ANY, _("RTP Streaming"));
+	auto* rtp_box_sizer = new wxStaticBoxSizer(rtp_box, wxVERTICAL);
+	auto* rtp_grid = new wxFlexGridSizer(0, 2, 5, 5);
+	rtp_grid->AddGrowableCol(1);
+
+	rtp_grid->Add(new wxStaticText(rtp_box, wxID_ANY, _("Destination")), 0, wxALIGN_CENTER_VERTICAL);
+	auto* destination_sizer = new wxBoxSizer(wxHORIZONTAL);
+	m_rtp_address = new wxTextCtrl(rtp_box, wxID_ANY);
+	destination_sizer->Add(m_rtp_address, 1, wxEXPAND);
+	destination_sizer->Add(new wxStaticText(rtp_box, wxID_ANY, ":"), 0, wxALIGN_CENTER_VERTICAL | wxLEFT | wxRIGHT, 4);
+	m_rtp_port = new wxSpinCtrl(rtp_box, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+		wxSP_ARROW_KEYS, 1, std::numeric_limits<uint16>::max());
+	m_rtp_port->SetMinSize({80, -1});
+	destination_sizer->Add(m_rtp_port, 0, wxEXPAND);
+	rtp_grid->Add(destination_sizer, 1, wxEXPAND);
+
+	rtp_grid->Add(new wxStaticText(rtp_box, wxID_ANY, _("Resolution")), 0, wxALIGN_CENTER_VERTICAL);
+	m_rtp_resolution = new wxChoice(rtp_box, wxID_ANY);
+	for (const auto& resolution : kRTPResolutions)
+		m_rtp_resolution->Append(resolution.ToString());
+	rtp_grid->Add(m_rtp_resolution, 0, wxEXPAND);
+
+	rtp_grid->Add(new wxStaticText(rtp_box, wxID_ANY, _("Frame rate")), 0, wxALIGN_CENTER_VERTICAL);
+	m_rtp_fps = new wxSpinCtrl(rtp_box, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+		wxSP_ARROW_KEYS, 1, 120);
+	rtp_grid->Add(m_rtp_fps, 0, wxEXPAND);
+
+	rtp_grid->Add(new wxStaticText(rtp_box, wxID_ANY, _("Bitrate (kbps)")), 0, wxALIGN_CENTER_VERTICAL);
+	m_rtp_bitrate = new wxSpinCtrl(rtp_box, wxID_ANY, wxEmptyString, wxDefaultPosition, wxDefaultSize,
+		wxSP_ARROW_KEYS, 100, 50000);
+	rtp_grid->Add(m_rtp_bitrate, 0, wxEXPAND);
+
+	rtp_box_sizer->Add(rtp_grid, 0, wxEXPAND | wxALL, 5);
+	m_rtp_save_sdp = new wxButton(rtp_box, wxID_ANY, _("Save SDP file..."));
+	m_rtp_save_sdp->Bind(wxEVT_BUTTON, &GeneralSettings2::OnSaveRTPDescription, this);
+	rtp_box_sizer->Add(m_rtp_save_sdp, 0, wxALIGN_RIGHT | wxALL, 5);
+	rtp_sizer->Add(rtp_box_sizer, 0, wxEXPAND | wxALL, 5);
+	m_rtp_streaming_panel->SetSizer(rtp_sizer);
+	general_panel_sizer->Add(m_rtp_streaming_panel, 0, wxEXPAND);
+	m_host_gamepad_screen_rtp->Bind(wxEVT_CHECKBOX, [this](wxCommandEvent&) {
+		m_rtp_streaming_panel->Show(m_host_gamepad_screen_rtp->IsChecked());
+		Layout();
+		Fit();
+	});
 
 	{
 		auto* outerMlcBox = new wxStaticBox(panel, wxID_ANY, _("Custom MLC path"));
@@ -1138,7 +1212,23 @@ void GeneralSettings2::StoreConfig()
 	wxGuiConfig.msw_theme = m_msw_theme->GetSelection();
 #endif
 	config.play_boot_sound = m_play_boot_sound->IsChecked();
+	const bool rtpChanged =
+		config.rtp_address.GetValue() != m_rtp_address->GetValue().utf8_string() ||
+		config.rtp_port.GetValue() != m_rtp_port->GetValue() ||
+		config.rtp_width.GetValue() != GetRTPResolution(m_rtp_resolution->GetSelection()).width ||
+		config.rtp_height.GetValue() != GetRTPResolution(m_rtp_resolution->GetSelection()).height ||
+		config.rtp_fps.GetValue() != m_rtp_fps->GetValue() ||
+		config.rtp_bitrate_kbps.GetValue() != m_rtp_bitrate->GetValue();
 	config.host_gamepad_screen_rtp = m_host_gamepad_screen_rtp->IsChecked();
+	config.rtp_address = m_rtp_address->GetValue().utf8_string();
+	config.rtp_port = m_rtp_port->GetValue();
+	const auto& resolution = GetRTPResolution(m_rtp_resolution->GetSelection());
+	config.rtp_width = resolution.width;
+	config.rtp_height = resolution.height;
+	config.rtp_fps = m_rtp_fps->GetValue();
+	config.rtp_bitrate_kbps = m_rtp_bitrate->GetValue();
+	if (rtpChanged)
+		GamepadRTPStream::Shutdown();
 	config.disable_screensaver = m_disable_screensaver->IsChecked();
 	// toggle while a game is running
 	if (CafeSystem::IsTitleRunning())
@@ -1900,6 +1990,19 @@ void GeneralSettings2::ApplyConfig()
 	m_disable_screensaver->SetValue(config.disable_screensaver);
 	m_play_boot_sound->SetValue(config.play_boot_sound);
 	m_host_gamepad_screen_rtp->SetValue(config.host_gamepad_screen_rtp);
+	m_rtp_address->SetValue(wxString::FromUTF8(config.rtp_address.GetValue()));
+	m_rtp_port->SetValue(config.rtp_port);
+	const auto resolution = std::find_if(kRTPResolutions.begin(), kRTPResolutions.end(),
+		[&config](const RTPResolution& entry) {
+			return entry.width == config.rtp_width.GetValue() &&
+				entry.height == config.rtp_height.GetValue();
+		});
+	m_rtp_resolution->SetSelection(
+		resolution == kRTPResolutions.end() ? 0 :
+			static_cast<sint32>(std::distance(kRTPResolutions.begin(), resolution)));
+	m_rtp_fps->SetValue(config.rtp_fps);
+	m_rtp_bitrate->SetValue(config.rtp_bitrate_kbps);
+	m_rtp_streaming_panel->Show(config.host_gamepad_screen_rtp);
 #if BOOST_OS_WINDOWS
 	m_msw_theme->SetSelection(wxGUIconfig.msw_theme);
 #endif
@@ -2091,6 +2194,8 @@ void GeneralSettings2::ApplyConfig()
 	m_gpu_capture_dir->SetValue(wxString::FromUTF8(config.gpu_capture_dir.GetValue()));
 	m_framebuffer_fetch->SetValue(config.framebuffer_fetch);
 #endif
+	Layout();
+	Fit();
 }
 
 void GeneralSettings2::OnAudioAPISelected(wxCommandEvent& event)
@@ -2440,6 +2545,46 @@ void GeneralSettings2::OnMLCPathClear(wxCommandEvent& event)
 	wxCloseEvent closeEvent(wxEVT_CLOSE_WINDOW);
 	wxPostEvent(this, closeEvent);
 	wxPostEvent(GetParent(), closeEvent);
+}
+
+void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
+{
+	const auto& resolution = GetRTPResolution(m_rtp_resolution->GetSelection());
+	const std::string address = m_rtp_address->GetValue().utf8_string();
+	const auto port = m_rtp_port->GetValue();
+	const auto fps = m_rtp_fps->GetValue();
+
+	wxFileDialog dialog(this, _("Save RTP stream description"), wxEmptyString,
+		"cemu-gamepad.sdp", "SDP files (*.sdp)|*.sdp",
+		wxFD_SAVE | wxFD_OVERWRITE_PROMPT);
+	if (dialog.ShowModal() != wxID_OK)
+		return;
+
+	const std::string sdp = fmt::format(
+		"v=0\r\n"
+		"o=- 0 0 IN IP4 127.0.0.1\r\n"
+		"s=Cemu Gamepad\r\n"
+		"c=IN IP4 {}\r\n"
+		"t=0 0\r\n"
+		"m=video {} RTP/AVP 96\r\n"
+		"a=rtpmap:96 H264/90000\r\n"
+		"a=fmtp:96 packetization-mode=1\r\n"
+		"a=framerate:{}\r\n"
+		"a=recvonly\r\n",
+		address, port, fps);
+
+	std::ofstream file(dialog.GetPath().utf8_string(), std::ios::binary);
+	file << sdp;
+	if (!file)
+	{
+		wxMessageBox(_("Failed to save the SDP file."), _("Error"),
+			wxOK | wxCENTRE | wxICON_ERROR, this);
+		return;
+	}
+	wxMessageBox(formatWxString(
+		_("Saved RTP stream description for {}x{} at {} fps."),
+		resolution.width, resolution.height, fps),
+		_("RTP Streaming"), wxOK | wxCENTRE | wxICON_INFORMATION, this);
 }
 
 void GeneralSettings2::OnShowOnlineValidator(wxCommandEvent& event)
