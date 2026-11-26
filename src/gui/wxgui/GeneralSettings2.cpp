@@ -347,7 +347,15 @@ wxPanel* GeneralSettings2::AddGeneralPage(wxNotebook* notebook)
 	rtp_box_sizer->Add(rtp_grid, 0, wxEXPAND | wxALL, 5);
 	m_rtp_save_sdp = new wxButton(rtp_box, wxID_ANY, _("Save SDP file..."));
 	m_rtp_save_sdp->Bind(wxEVT_BUTTON, &GeneralSettings2::OnSaveRTPDescription, this);
-	rtp_box_sizer->Add(m_rtp_save_sdp, 0, wxALIGN_RIGHT | wxALL, 5);
+	auto* rtp_button_sizer = new wxBoxSizer(wxHORIZONTAL);
+	m_rtp_apply = new wxButton(rtp_box, wxID_ANY, _("Apply RTP settings"));
+	m_rtp_apply->Bind(wxEVT_BUTTON, [this](wxCommandEvent&) {
+		ApplyRTPConfig();
+		GetConfigHandle().Save();
+	});
+	rtp_button_sizer->Add(m_rtp_apply, 0, wxRIGHT, 5);
+	rtp_button_sizer->Add(m_rtp_save_sdp);
+	rtp_box_sizer->Add(rtp_button_sizer, 0, wxALIGN_RIGHT | wxALL, 5);
 	rtp_sizer->Add(rtp_box_sizer, 0, wxEXPAND | wxALL, 5);
 	m_rtp_streaming_panel->SetSizer(rtp_sizer);
 	general_panel_sizer->Add(m_rtp_streaming_panel, 0, wxEXPAND);
@@ -1212,23 +1220,7 @@ void GeneralSettings2::StoreConfig()
 	wxGuiConfig.msw_theme = m_msw_theme->GetSelection();
 #endif
 	config.play_boot_sound = m_play_boot_sound->IsChecked();
-	const bool rtpChanged =
-		config.rtp_address.GetValue() != m_rtp_address->GetValue().utf8_string() ||
-		config.rtp_port.GetValue() != m_rtp_port->GetValue() ||
-		config.rtp_width.GetValue() != GetRTPResolution(m_rtp_resolution->GetSelection()).width ||
-		config.rtp_height.GetValue() != GetRTPResolution(m_rtp_resolution->GetSelection()).height ||
-		config.rtp_fps.GetValue() != m_rtp_fps->GetValue() ||
-		config.rtp_bitrate_kbps.GetValue() != m_rtp_bitrate->GetValue();
-	config.host_gamepad_screen_rtp = m_host_gamepad_screen_rtp->IsChecked();
-	config.rtp_address = m_rtp_address->GetValue().utf8_string();
-	config.rtp_port = m_rtp_port->GetValue();
-	const auto& resolution = GetRTPResolution(m_rtp_resolution->GetSelection());
-	config.rtp_width = resolution.width;
-	config.rtp_height = resolution.height;
-	config.rtp_fps = m_rtp_fps->GetValue();
-	config.rtp_bitrate_kbps = m_rtp_bitrate->GetValue();
-	if (rtpChanged)
-		GamepadRTPStream::Shutdown();
+	ApplyRTPConfig();
 	config.disable_screensaver = m_disable_screensaver->IsChecked();
 	// toggle while a game is running
 	if (CafeSystem::IsTitleRunning())
@@ -2549,7 +2541,6 @@ void GeneralSettings2::OnMLCPathClear(wxCommandEvent& event)
 
 void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
 {
-	const auto& resolution = GetRTPResolution(m_rtp_resolution->GetSelection());
 	const std::string address = m_rtp_address->GetValue().utf8_string();
 	const auto port = m_rtp_port->GetValue();
 	const auto fps = m_rtp_fps->GetValue();
@@ -2587,10 +2578,36 @@ void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
 			wxOK | wxCENTRE | wxICON_ERROR, this);
 		return;
 	}
-	wxMessageBox(formatWxString(
-		_("Saved RTP stream description for {}x{} at {} fps."),
-		resolution.width, resolution.height, fps),
-		_("RTP Streaming"), wxOK | wxCENTRE | wxICON_INFORMATION, this);
+}
+
+bool GeneralSettings2::ApplyRTPConfig()
+{
+	auto& config = GetConfig();
+	const auto& resolution = GetRTPResolution(m_rtp_resolution->GetSelection());
+	const bool enabledChanged =
+		config.host_gamepad_screen_rtp.GetValue() != m_host_gamepad_screen_rtp->IsChecked();
+	const bool settingsChanged =
+		config.rtp_address.GetValue() != m_rtp_address->GetValue().utf8_string() ||
+		config.rtp_port.GetValue() != m_rtp_port->GetValue() ||
+		config.rtp_width.GetValue() != resolution.width ||
+		config.rtp_height.GetValue() != resolution.height ||
+		config.rtp_fps.GetValue() != m_rtp_fps->GetValue() ||
+		config.rtp_bitrate_kbps.GetValue() != m_rtp_bitrate->GetValue();
+
+	config.host_gamepad_screen_rtp = m_host_gamepad_screen_rtp->IsChecked();
+	config.rtp_address = m_rtp_address->GetValue().utf8_string();
+	config.rtp_port = m_rtp_port->GetValue();
+	config.rtp_width = resolution.width;
+	config.rtp_height = resolution.height;
+	config.rtp_fps = m_rtp_fps->GetValue();
+	config.rtp_bitrate_kbps = m_rtp_bitrate->GetValue();
+
+	if (enabledChanged || settingsChanged)
+	{
+		GamepadRTPStream::Shutdown();
+		return true;
+	}
+	return false;
 }
 
 void GeneralSettings2::OnShowOnlineValidator(wxCommandEvent& event)

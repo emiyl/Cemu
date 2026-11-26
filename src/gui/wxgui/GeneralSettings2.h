@@ -66,6 +66,7 @@ private:
 	wxSpinCtrl* m_rtp_fps;
 	wxSpinCtrl* m_rtp_bitrate;
 	wxButton* m_rtp_save_sdp;
+	wxButton* m_rtp_apply;
 #if BOOST_OS_WINDOWS
 	wxChoice* m_msw_theme;
 #endif
@@ -136,6 +137,7 @@ private:
 	void OnMLCPathSelect(wxCommandEvent& event);
 	void OnMLCPathClear(wxCommandEvent& event);
 	void OnSaveRTPDescription(wxCommandEvent& event);
+	bool ApplyRTPConfig();
 	void OnShowOnlineValidator(wxCommandEvent& event);
 	void OnAccountServiceChanged(wxCommandEvent& event);
 	static wxString GetOnlineAccountErrorMessage(OnlineAccountError error);
