@@ -154,6 +154,8 @@ public:
 		encoder->setComputePipelineState(m_computePipeline);
 		encoder->setTexture(sourceTexture, 0);
 		encoder->setTexture(destinationTexture, 1);
+		const uint32 applySRGBEncoding = LatteGPUState.drcBufferUsesSRGB ? 1 : 0;
+		encoder->setBytes(&applySRGBEncoding, sizeof(applySRGBEncoding), 0);
 		const MTL::Size threadsPerThreadgroup = {
 			m_computePipeline->threadExecutionWidth(),
 			std::max<NS::UInteger>(1, m_computePipeline->maxTotalThreadsPerThreadgroup() /
@@ -232,6 +234,7 @@ private:
 			kernel void cemuRtpScale(
 				texture2d<float, access::read> source [[texture(0)]],
 				texture2d<float, access::write> destination [[texture(1)]],
+				constant uint& applySRGBEncoding [[buffer(0)]],
 				uint2 gid [[thread_position_in_grid]]) {
 				const uint2 size = uint2(destination.get_width(), destination.get_height());
 				if (gid.x >= size.x || gid.y >= size.y)
@@ -240,7 +243,16 @@ private:
 					uint2(gid.x * source.get_width() / size.x,
 						gid.y * source.get_height() / size.y),
 					uint2(source.get_width() - 1, source.get_height() - 1));
-				destination.write(source.read(sample), gid);
+				float4 color = source.read(sample);
+				if (applySRGBEncoding) {
+					for (uint channel = 0; channel < 3; ++channel) {
+						float linear = color[channel];
+						color[channel] = linear <= 0.0031308f
+							? 12.92f * linear
+							: 1.055f * pow(linear, 1.0f / 2.4f) - 0.055f;
+					}
+				}
+				destination.write(color, gid);
 			}
 		)";
 		NS::String* sourceString = NS::String::string(source, NS::UTF8StringEncoding);
