@@ -248,6 +248,7 @@ public:
 
 	void InitFirstCommandBuffer();
 	void ProcessFinishedCommandBuffers();
+	void RegisterCommandBufferCallback(uint64 commandBufferId, std::function<void()>&& callback);
 	void WaitForNextFinishedCommandBuffer();
 	void SubmitCommandBuffer(VkSemaphore signalSemaphore = VK_NULL_HANDLE, VkSemaphore waitSemaphore = VK_NULL_HANDLE);
 	void RequestSubmitSoon();
@@ -594,6 +595,7 @@ private:
 
 private:
 	std::vector<const char*> m_layerNames;
+	std::unordered_map<uint64, std::vector<std::function<void()>>> m_commandBufferCallbacks;
 	VkInstance m_instance = VK_NULL_HANDLE;
 	VkPhysicalDevice m_physicalDevice = VK_NULL_HANDLE;
 	VkDevice  m_logicalDevice = VK_NULL_HANDLE;

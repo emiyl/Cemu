@@ -176,6 +176,7 @@ public:
 
 private:
 	void GetVendorInformation() override;
+	bool ProcessRTPReadback();
 
 	void texture_setActiveTextureUnit(sint32 index);
 
@@ -183,6 +184,12 @@ private:
 	void texture_syncSliceSpecialIntegerToBC3(LatteTexture* srcTexture, sint32 srcSliceIndex, sint32 srcMipIndex, LatteTexture* dstTexture, sint32 dstSliceIndex, sint32 dstMipIndex);
 
 	GLuint m_pipeline = 0;
+	GLuint m_rtpPbo = 0;
+	GLsync m_rtpFence = nullptr;
+	sint32 m_rtpWidth = 0;
+	sint32 m_rtpHeight = 0;
+	bool m_rtpNeedsSRGBConversion = false;
+	bool m_rtpDecodeSRGB = false;
 
 	bool m_isPadViewContext{};
 	bool m_supportsS3TC = false;

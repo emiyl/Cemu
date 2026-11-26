@@ -1264,7 +1264,48 @@ void VulkanRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 		barrier_image<TRANSFER_READ, TRANSFER_WRITE | IMAGE_WRITE>(baseImageTex, region.imageSubresource, baseImageTex->GetDefaultLayout());
 	}
 
+	const uint64 commandBufferId = GetCurrentCommandBufferId();
 	SubmitCommandBuffer();
+	if (rtpRequested && !screenshotRequested)
+	{
+		RegisterCommandBufferCallback(commandBufferId, [this, bufferPtr, buffer,
+			bufferMemory, image, imageMemory, format, size, width, height]() {
+			std::vector<uint8> rgbData;
+			rgbData.resize(3 * width * height);
+			const auto* source = static_cast<const uint8*>(bufferPtr);
+			if (format == VK_FORMAT_R8G8B8A8_UNORM ||
+				format == VK_FORMAT_R8G8B8A8_SRGB)
+			{
+				for (sint32 pixel = 0; pixel < width * height; ++pixel)
+				{
+					std::memcpy(rgbData.data() + pixel * 3, source + pixel * 4, 3);
+				}
+				if (format == VK_FORMAT_R8G8B8A8_SRGB)
+				{
+					for (auto& channel : rgbData)
+						channel = SRGBComponentToRGB(channel);
+				}
+			}
+			else
+			{
+				std::memcpy(rgbData.data(), source, size);
+				if (format == VK_FORMAT_R8G8B8_SRGB)
+				{
+					for (auto& channel : rgbData)
+						channel = SRGBComponentToRGB(channel);
+				}
+			}
+			vkUnmapMemory(m_logicalDevice, bufferMemory);
+			vkFreeMemory(m_logicalDevice, bufferMemory, nullptr);
+			vkDestroyBuffer(m_logicalDevice, buffer, nullptr);
+			if (image)
+				vkDestroyImage(m_logicalDevice, image, nullptr);
+			if (imageMemory)
+				vkFreeMemory(m_logicalDevice, imageMemory, nullptr);
+			GamepadRTPStream::SubmitFrame(std::move(rgbData), width, height);
+		});
+		return;
+	}
 	WaitCommandBufferFinished(GetCurrentCommandBufferId());
 
 	bool formatValid = true;
@@ -2206,10 +2247,18 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 			m_uniformVarBufferReadIndex = m_cmdBufferUniformRingbufIndices[m_commandBufferSyncIndex];
 			m_commandBufferSyncIndex = (m_commandBufferSyncIndex + 1) % m_commandBuffers.size();
 			memoryManager->cleanupBuffers(m_countCommandBufferFinished);
-			m_countCommandBufferFinished++;
+			const uint64 finishedId = m_countCommandBufferFinished++;
+			auto callbacks = m_commandBufferCallbacks.find(finishedId);
+			if (callbacks != m_commandBufferCallbacks.end())
+			{
+				for (auto& callback : callbacks->second)
+					callback();
+				m_commandBufferCallbacks.erase(callbacks);
+			}
 			finishedCmdBuffers = true;
 			continue;
 		}
+
 		else if (fenceStatus == VK_NOT_READY)
 		{
 			// not signaled
@@ -2221,6 +2270,14 @@ void VulkanRenderer::ProcessFinishedCommandBuffers()
 	{
 		LatteTextureReadback_UpdateFinishedTransfers(false);
 	}
+}
+
+void VulkanRenderer::RegisterCommandBufferCallback(uint64 commandBufferId, std::function<void()>&& callback)
+{
+	if (HasCommandBufferFinished(commandBufferId))
+		callback();
+	else
+		m_commandBufferCallbacks[commandBufferId].emplace_back(std::move(callback));
 }
 
 void VulkanRenderer::WaitForNextFinishedCommandBuffer()

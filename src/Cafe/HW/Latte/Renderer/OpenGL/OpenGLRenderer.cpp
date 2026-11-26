@@ -149,6 +149,10 @@ OpenGLRenderer::OpenGLRenderer() : Renderer(RendererAPI::OpenGL)
 
 OpenGLRenderer::~OpenGLRenderer()
 {
+	if (m_rtpFence)
+		glDeleteSync(m_rtpFence);
+	if (m_rtpPbo)
+		glDeleteBuffers(1, &m_rtpPbo);
 	if(m_pipeline != 0)
 		glDeleteProgramPipelines(1, &m_pipeline);
 
@@ -546,6 +550,8 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 	const bool rtpRequested = padView && GamepadRTPStream::ShouldCaptureFrame();
 	if (!screenshotRequested && !rtpRequested)
 		return;
+	if (rtpRequested && !ProcessRTPReadback())
+		return;
 
 	if (screenshotRequested && IsPadWindowActive())
 	{
@@ -571,6 +577,29 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_WIDTH, &screenshotWidth);
 	glGetTexLevelParameteriv(GL_TEXTURE_2D, 0, GL_TEXTURE_HEIGHT, &screenshotHeight);
 
+	const bool srcUsesSRGB = HAS_FLAG(texView->format, Latte::E_GX2SURFFMT::FMT_BIT_SRGB);
+	const bool dstUsesSRGB = (!padView && LatteGPUState.tvBufferUsesSRGB) || (padView && LatteGPUState.drcBufferUsesSRGB);
+	if (rtpRequested && !screenshotRequested)
+	{
+		if (!m_rtpPbo)
+			glGenBuffers(1, &m_rtpPbo);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, m_rtpPbo);
+		glBufferData(GL_PIXEL_PACK_BUFFER, screenshotWidth * screenshotHeight * 3, nullptr, GL_STREAM_READ);
+		glPixelStorei(GL_PACK_ALIGNMENT, 1);
+		glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+		glPixelStorei(GL_PACK_ALIGNMENT, 4);
+		glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+		texture_bindAndActivate(nullptr, 0);
+		m_rtpFence = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+		m_rtpWidth = screenshotWidth;
+		m_rtpHeight = screenshotHeight;
+		m_rtpNeedsSRGBConversion =
+			(srcUsesSRGB && !dstUsesSRGB) || (!srcUsesSRGB && dstUsesSRGB);
+		m_rtpDecodeSRGB = srcUsesSRGB && !dstUsesSRGB;
+		glFlush();
+		return;
+	}
+
 	const sint32 pixelDataSize = screenshotWidth * screenshotHeight * 3;
 	std::vector<uint8> rgb_data(pixelDataSize);
 
@@ -579,8 +608,6 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 	glPixelStorei(GL_PACK_ALIGNMENT, 4);
 	texture_bindAndActivate(nullptr, 0);
 	
-	const bool srcUsesSRGB = HAS_FLAG(texView->format, Latte::E_GX2SURFFMT::FMT_BIT_SRGB);
-	const bool dstUsesSRGB = (!padView && LatteGPUState.tvBufferUsesSRGB) || (padView && LatteGPUState.drcBufferUsesSRGB);
 	if((srcUsesSRGB && !dstUsesSRGB) || (!srcUsesSRGB && dstUsesSRGB))
 	{
 		for (sint32 iy = 0; iy < screenshotHeight; ++iy)
@@ -610,6 +637,41 @@ void OpenGLRenderer::HandleScreenshotRequest(LatteTextureView* texView, bool pad
 		SaveScreenshot(rgb_data, screenshotWidth, screenshotHeight, !padView);
 	if (rtpRequested)
 		GamepadRTPStream::SubmitFrame(std::move(rgb_data), screenshotWidth, screenshotHeight);
+}
+
+bool OpenGLRenderer::ProcessRTPReadback()
+{
+	if (!m_rtpFence)
+		return true;
+	const GLenum status = glClientWaitSync(m_rtpFence, 0, 0);
+	if (status == GL_TIMEOUT_EXPIRED)
+		return false;
+	if (status != GL_ALREADY_SIGNALED && status != GL_CONDITION_SATISFIED)
+		return false;
+
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, m_rtpPbo);
+	const auto* mapped = static_cast<const uint8*>(
+		glMapBufferRange(GL_PIXEL_PACK_BUFFER, 0,
+			m_rtpWidth * m_rtpHeight * 3, GL_MAP_READ_BIT));
+	if (!mapped)
+		return false;
+
+	std::vector<uint8> rgbData(m_rtpWidth * m_rtpHeight * 3);
+	std::memcpy(rgbData.data(), mapped, rgbData.size());
+	glUnmapBuffer(GL_PIXEL_PACK_BUFFER);
+	glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+	glDeleteSync(m_rtpFence);
+	m_rtpFence = nullptr;
+	glDeleteBuffers(1, &m_rtpPbo);
+	m_rtpPbo = 0;
+	if (m_rtpNeedsSRGBConversion)
+	{
+		for (auto& channel : rgbData)
+			channel = m_rtpDecodeSRGB ? SRGBComponentToRGB(channel) :
+				RGBComponentToSRGB(channel);
+	}
+	GamepadRTPStream::SubmitFrame(std::move(rgbData), m_rtpWidth, m_rtpHeight);
+	return true;
 }
 
 void OpenGLRenderer::DrawBackbufferQuad(LatteTextureView* texView, RendererOutputShader* shader, bool useLinearTexFilter, sint32 imageX, sint32 imageY, sint32 imageWidth, sint32 imageHeight, bool padView, bool clearBackground)
