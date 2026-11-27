@@ -1,4 +1,5 @@
 #include "MainWindow.h"
+#include "CemuApp.h"
 
 // subwindows
 #include "TitleManager.h"
@@ -460,6 +461,7 @@ void MainWindow::OnClose(wxCloseEvent& event)
 
 #if BOOST_OS_MACOS
 	event.Skip(false);
+	static_cast<CemuApp&>(*wxTheApp).StopSDLEventPump();
 	CallAfter([this]() {
 		CafeSystem::Shutdown();
 		DestroyCanvas();

@@ -25,6 +25,9 @@ public:
 	static void InitializeExistingMLCOrFail(fs::path mlc);
 
 	void RequestRestart(fs::path executablePath);
+#if BOOST_OS_MACOS
+	void StopSDLEventPump();
+#endif
 private:
 	void LocalizeUI(wxLanguage languageToUse);
 

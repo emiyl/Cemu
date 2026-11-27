@@ -391,13 +391,7 @@ bool CemuApp::OnInit()
 int CemuApp::OnExit()
 {
 #if BOOST_OS_MACOS
-	if (m_sdlEventPumpTimer)
-	{
-		m_sdlEventPumpTimer->Stop();
-		Unbind(wxEVT_TIMER, &CemuApp::OnSDLEventPumpTimer, this);
-		delete m_sdlEventPumpTimer;
-		m_sdlEventPumpTimer = nullptr;
-	}
+	StopSDLEventPump();
 #endif
 	wxApp::OnExit();
 	wxTheClipboard->Flush();
@@ -435,6 +429,16 @@ int CemuApp::OnExit()
 }
 
 #if BOOST_OS_MACOS
+void CemuApp::StopSDLEventPump()
+{
+	if (!m_sdlEventPumpTimer)
+		return;
+	m_sdlEventPumpTimer->Stop();
+	Unbind(wxEVT_TIMER, &CemuApp::OnSDLEventPumpTimer, this);
+	delete m_sdlEventPumpTimer;
+	m_sdlEventPumpTimer = nullptr;
+}
+
 void CemuApp::OnSDLEventPumpTimer(wxTimerEvent& event)
 {
 	// this callback is only used on macOS where SDL event functions need to be called on the main thread
