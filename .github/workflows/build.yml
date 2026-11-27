@@ -12,7 +12,8 @@ on:
 
 env:
   VCPKG_ROOT: "${{github.workspace}}/dependencies/vcpkg"
-  VCPKG_BINARY_SOURCES: 'clear;nuget,GitHub,readwrite'
+  VCPKG_DEFAULT_BINARY_CACHE: "${{github.workspace}}/vcpkg-binary-cache"
+  VCPKG_BINARY_SOURCES: 'clear;files,${{github.workspace}}/vcpkg-binary-cache,readwrite;nuget,GitHub,readwrite'
   VCPKG_FORCE_DOWNLOADED_BINARIES: true
   
 jobs:
@@ -56,6 +57,14 @@ jobs:
     - name: "Bootstrap vcpkg"
       run: |
         bash ./dependencies/vcpkg/bootstrap-vcpkg.sh
+
+    - name: "Cache vcpkg binaries"
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('vcpkg.json', 'dependencies/vcpkg_overlay_ports/**', 'dependencies/vcpkg_overlay_ports_linux/**') }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-${{ matrix.arch }}-
 
     - name: 'Setup NuGet Credentials for vcpkg'
       shell: 'bash'
@@ -156,6 +165,14 @@ jobs:
       run: |
         ./dependencies/vcpkg/bootstrap-vcpkg.bat
 
+    - name: "Cache vcpkg binaries"
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('vcpkg.json', 'dependencies/vcpkg_overlay_ports/**', 'dependencies/vcpkg_overlay_ports_win/**') }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-${{ runner.arch }}-
+
     - name: 'Setup NuGet Credentials for vcpkg'
       shell: 'bash'
       run: |
@@ -255,6 +272,14 @@ jobs:
     - name: "Bootstrap vcpkg"
       run: |
         bash ./dependencies/vcpkg/bootstrap-vcpkg.sh
+
+    - name: "Cache vcpkg binaries"
+      uses: actions/cache@v5
+      with:
+        path: ${{ env.VCPKG_DEFAULT_BINARY_CACHE }}
+        key: vcpkg-${{ runner.os }}-${{ matrix.arch }}-${{ hashFiles('vcpkg.json', 'dependencies/vcpkg_overlay_ports/**', 'dependencies/vcpkg_overlay_ports_mac/**') }}
+        restore-keys: |
+          vcpkg-${{ runner.os }}-${{ matrix.arch }}-
 
     - name: 'Setup NuGet Credentials for vcpkg'
       shell: 'bash'
