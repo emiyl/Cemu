@@ -325,7 +325,16 @@ private:
 		auto SetSessionProperty = [&](CFStringRef key, CFTypeRef value) {
 			const OSStatus result = VTSessionSetProperty(m_session, key, value);
 			if (result != noErr)
-				cemuLog_log(LogType::Force, "RTP: failed to set VideoToolbox property");
+			{
+				char keyName[256]{};
+				if (CFStringGetCString(key, keyName, sizeof(keyName), kCFStringEncodingUTF8))
+					cemuLog_log(LogType::Force,
+						"RTP: failed to set VideoToolbox property '{}': {}",
+						keyName, result);
+				else
+					cemuLog_log(LogType::Force,
+						"RTP: failed to set VideoToolbox property: {}", result);
+			}
 		};
 		SetSessionProperty(kVTCompressionPropertyKey_RealTime, kCFBooleanTrue);
 		SetSessionProperty(kVTCompressionPropertyKey_AllowFrameReordering, kCFBooleanFalse);
@@ -340,9 +349,6 @@ private:
 		CFNumberRef keyframeInterval = CreateNumber(m_fps);
 		SetSessionProperty(kVTCompressionPropertyKey_MaxKeyFrameInterval, keyframeInterval);
 		CFRelease(keyframeInterval);
-		CFNumberRef zeroDelay = CreateNumber(0);
-		SetSessionProperty(kVTCompressionPropertyKey_MaxFrameDelayCount, zeroDelay);
-		CFRelease(zeroDelay);
 
 		if (VTCompressionSessionPrepareToEncodeFrames(m_session) != noErr)
 		{
