@@ -161,8 +161,13 @@ add_library(CemuCafe
   HW/Latte/LegacyShaderDecompiler/LatteDecompilerRegisterDataTypeTracker.cpp
   HW/Latte/Renderer/Renderer.cpp
   HW/Latte/Renderer/Renderer.h
-  HW/Latte/Renderer/GamepadRTPStream.cpp
-  HW/Latte/Renderer/GamepadRTPStream.h
+  HW/Latte/Renderer/GamepadRTPStream/GamepadRTPStream.cpp
+  HW/Latte/Renderer/GamepadRTPStream/GamepadRTPStream.h
+  HW/Latte/Renderer/GamepadRTPStream/Platform.h
+  HW/Latte/Renderer/GamepadRTPStream/Platform/Windows.cpp
+  HW/Latte/Renderer/GamepadRTPStream/Platform/macOS.cpp
+  HW/Latte/Renderer/GamepadRTPStream/Platform/LinuxAMD.cpp
+  HW/Latte/Renderer/GamepadRTPStream/Platform/LinuxNVIDIA.cpp
   HW/Latte/Renderer/RendererCore.cpp
   HW/Latte/Renderer/RendererCore.h
   HW/Latte/Renderer/RendererOuputShader.cpp
