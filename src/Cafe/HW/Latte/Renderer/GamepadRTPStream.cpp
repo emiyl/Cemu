@@ -28,15 +28,13 @@
 #include <VideoToolbox/VideoToolbox.h>
 #endif
 
-#if !BOOST_OS_WINDOWS && !BOOST_OS_MACOS
-extern "C"
-{
-#include <libavcodec/avcodec.h>
-#include <libavutil/avutil.h>
-#include <libavutil/error.h>
-#include <libavutil/opt.h>
-#include <libswscale/swscale.h>
-}
+#if BOOST_OS_LINUX
+#include <fcntl.h>
+#include <linux/fb.h>
+#include <va/va.h>
+#include <va/va_drm.h>
+#include <va/va_enc_h264.h>
+#include <unistd.h>
 #endif
 
 namespace
@@ -566,7 +564,7 @@ private:
 };
 #endif
 
-#if !BOOST_OS_WINDOWS && !BOOST_OS_MACOS
+#if BOOST_OS_LINUX
 class GamepadRTPWorker
 {
 public:
@@ -619,170 +617,299 @@ private:
 		return 0;
 	}
 
-	static const AVCodec* FindEncoder()
-	{
-#if BOOST_OS_MACOS
-		if (const AVCodec* codec = avcodec_find_encoder_by_name("h264_videotoolbox"))
-			return codec;
-#elif BOOST_OS_WINDOWS
-		if (const AVCodec* codec = avcodec_find_encoder_by_name("h264_mf"))
-			return codec;
-#endif
-		if (const AVCodec* codec = avcodec_find_encoder_by_name("libx264"))
-			return codec;
-		return avcodec_find_encoder(AV_CODEC_ID_H264);
-	}
-
 	bool InitializeEncoder()
 	{
-		const AVCodec* codec = FindEncoder();
-		if (!codec)
+		const char* renderNodes[] = {
+			"/dev/dri/renderD128",
+			"/dev/dri/renderD129",
+			"/dev/dri/card0",
+		};
+		for (const char* node : renderNodes)
 		{
-			cemuLog_log(LogType::Force, "RTP: no H.264 encoder is available");
+			m_drmFd = open(node, O_RDWR | O_CLOEXEC);
+			if (m_drmFd >= 0)
+			{
+				m_display = vaGetDisplayDRM(m_drmFd);
+				break;
+			}
+		}
+		if (!m_display || !CheckVA(vaInitialize(m_display, &m_majorVersion, &m_minorVersion),
+				"initialize display"))
+		{
 			return false;
 		}
 
-		m_codecContext = avcodec_alloc_context3(codec);
-		m_frame = av_frame_alloc();
-		m_packet = av_packet_alloc();
-		if (!m_codecContext || !m_frame || !m_packet)
+		const VAProfile profiles[] = {
+			VAProfileH264ConstrainedBaseline,
+			VAProfileH264Main,
+		};
+		int profileCount = 0;
+		std::vector<VAProfile> availableProfiles(vaMaxNumProfiles(m_display));
+		if (!CheckVA(vaQueryConfigProfiles(m_display, availableProfiles.data(),
+				&profileCount), "query profiles"))
+			return false;
+		bool profileFound = false;
+		for (const VAProfile candidate : profiles)
 		{
-			ReleaseEncoder();
+			if (std::find(availableProfiles.begin(),
+					availableProfiles.begin() + profileCount, candidate) !=
+				availableProfiles.begin() + profileCount)
+			{
+				m_profile = candidate;
+				profileFound = true;
+				break;
+			}
+		}
+		if (!profileFound)
+		{
+			cemuLog_log(LogType::Force, "RTP: VA-API has no H.264 encoder profile");
 			return false;
 		}
 
-		m_codecContext->width = m_width;
-		m_codecContext->height = m_height;
-		const char* codecName = codec->name ? codec->name : "";
-		const AVPixelFormat outputFormat =
-			std::string_view(codecName) == "h264_videotoolbox" ||
-			std::string_view(codecName) == "h264_mf"
-				? AV_PIX_FMT_NV12
-				: AV_PIX_FMT_YUV420P;
-		m_codecContext->pix_fmt = outputFormat;
-		m_codecContext->time_base = {1, m_fps};
-		m_codecContext->framerate = {m_fps, 1};
-		m_codecContext->bit_rate = static_cast<sint64>(m_bitrateKbps) * 1000;
-		m_codecContext->gop_size = m_fps;
-		m_codecContext->max_b_frames = 0;
-		m_codecContext->flags |= AV_CODEC_FLAG_LOW_DELAY;
-		m_codecContext->refs = 1;
-		m_codecContext->thread_count = 1;
-
-		if (std::string_view(codecName) == "h264_videotoolbox")
+		std::vector<VAEntrypoint> entrypoints(vaMaxNumEntrypoints(m_display));
+		int entrypointCount = 0;
+		vaQueryConfigEntrypoints(m_display, m_profile,
+			entrypoints.data(), &entrypointCount);
+		if (std::find(entrypoints.begin(), entrypoints.begin() + entrypointCount,
+				VAEntrypointEncSlice) == entrypoints.begin() + entrypointCount)
 		{
-			av_opt_set(m_codecContext->priv_data, "realtime", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "allow_sw", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "prio_speed", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "max_ref_frames", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "profile", "baseline", 0);
-		}
-		else if (std::string_view(codecName) == "libx264")
-		{
-			av_opt_set(m_codecContext->priv_data, "preset", "ultrafast", 0);
-			av_opt_set(m_codecContext->priv_data, "tune", "zerolatency", 0);
-			av_opt_set(m_codecContext->priv_data, "repeat-headers", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "bframes", "0", 0);
-			av_opt_set(m_codecContext->priv_data, "rc-lookahead", "0", 0);
-			av_opt_set(m_codecContext->priv_data, "sync-lookahead", "0", 0);
-			av_opt_set(m_codecContext->priv_data, "refs", "1", 0);
-			av_opt_set(m_codecContext->priv_data, "intra-refresh", "1", 0);
-		}
-
-		const sint32 error = avcodec_open2(m_codecContext, codec, nullptr);
-		if (error < 0)
-		{
-			LogCodecError("failed to initialize encoder", error);
-			ReleaseEncoder();
+			cemuLog_log(LogType::Force, "RTP: VA-API H.264 encoding is unavailable");
 			return false;
 		}
 
-		m_frame->format = m_codecContext->pix_fmt;
-		m_frame->width = m_codecContext->width;
-		m_frame->height = m_codecContext->height;
-		if (av_frame_get_buffer(m_frame, 32) < 0)
+		VAConfigAttrib attributes[] = {
+			{VAConfigAttribRTFormat, 0},
+			{VAConfigAttribRateControl, 0},
+			{VAConfigAttribEncPackedHeaders, 0},
+		};
+		vaGetConfigAttributes(m_display, m_profile, VAEntrypointEncSlice,
+			attributes, std::size(attributes));
+		for (auto& attribute : attributes)
 		{
-			ReleaseEncoder();
+			if (attribute.type == VAConfigAttribRTFormat)
+				attribute.value = VA_RT_FORMAT_YUV420;
+			else if (attribute.type == VAConfigAttribRateControl)
+				attribute.value = VA_RC_CBR;
+			else if (attribute.type == VAConfigAttribEncPackedHeaders)
+				attribute.value = VA_ENC_PACKED_HEADER_NONE;
+		}
+		if (!CheckVA(vaCreateConfig(m_display, m_profile, VAEntrypointEncSlice,
+				attributes, std::size(attributes), &m_config), "create config"))
 			return false;
+		for (auto& surface : m_surfaces)
+		{
+			if (!CheckVA(vaCreateSurfaces(m_display, VA_RT_FORMAT_YUV420,
+					m_width, m_height, &surface, 1, nullptr, 0),
+					"create surface"))
+				return false;
+		}
+		if (!CheckVA(vaCreateContext(m_display, m_config, m_width, m_height,
+				VA_PROGRESSIVE, m_surfaces.data(), m_surfaces.size(), &m_context),
+				"create context"))
+			return false;
+
+		VAImageFormat imageFormat{.fourcc = VA_FOURCC_NV12};
+		if (!CheckVA(vaCreateImage(m_display, &imageFormat, m_width, m_height,
+				&m_image), "create NV12 image"))
+			return false;
+		constexpr uint32 codedBufferSize =
+			4 * 1024 * 1024;
+		for (auto& codedBuffer : m_codedBuffers)
+		{
+			if (!CheckVA(vaCreateBuffer(m_display, m_context, VAEncCodedBufferType,
+					codedBufferSize, 1, nullptr, &codedBuffer),
+					"create coded buffer"))
+				return false;
 		}
 
 		cemuLog_log(LogType::Force,
-			"RTP: streaming gamepad screen at {}x{}, {} fps to {}:{} using {}",
-			m_width, m_height, m_fps, GetConfig().rtp_address.GetValue(), m_port, codecName);
+			"RTP: streaming gamepad screen at {}x{}, {} fps to {}:{} using VA-API {}.{}",
+			m_width, m_height, m_fps, GetConfig().rtp_address.GetValue(), m_port,
+			m_majorVersion, m_minorVersion);
 		return true;
 	}
 
 	void ReleaseEncoder()
 	{
-		av_packet_free(&m_packet);
-		av_frame_free(&m_frame);
-		avcodec_free_context(&m_codecContext);
-		sws_freeContext(m_scaler);
-		m_scaler = nullptr;
+		for (VABufferID buffer : m_codedBuffers)
+			if (buffer != VA_INVALID_ID)
+				vaDestroyBuffer(m_display, buffer);
+		if (m_image.image_id != VA_INVALID_ID)
+			vaDestroyImage(m_display, m_image.image_id);
+		if (m_context != VA_INVALID_ID)
+			vaDestroyContext(m_display, m_context);
+		for (VASurfaceID surface : m_surfaces)
+			if (surface != VA_INVALID_ID)
+				vaDestroySurfaces(m_display, &surface, 1);
+		if (m_config != VA_INVALID_ID)
+			vaDestroyConfig(m_display, m_config);
+		if (m_display)
+			vaTerminate(m_display);
+		if (m_drmFd >= 0)
+			close(m_drmFd);
 	}
 
-	void LogCodecError(std::string_view message, sint32 error)
+	static bool CheckVA(VAStatus status, std::string_view operation)
 	{
-		char errorBuffer[AV_ERROR_MAX_STRING_SIZE]{};
-		av_strerror(error, errorBuffer, sizeof(errorBuffer));
-		cemuLog_log(LogType::Force, "RTP: {}: {}", message, errorBuffer);
+		if (status == VA_STATUS_SUCCESS)
+			return true;
+		cemuLog_log(LogType::Force, "RTP: VA-API {} failed: {}", operation,
+			vaErrorStr(status));
+		return false;
 	}
 
 	bool EncodeFrame(const CaptureFrame& frame)
 	{
-		if (!m_scaler ||
-			m_sourceWidth != frame.width ||
-			m_sourceHeight != frame.height)
-		{
-			sws_freeContext(m_scaler);
-			m_scaler = sws_getContext(
-				frame.width, frame.height, AV_PIX_FMT_RGB24,
-				m_width, m_height, m_codecContext->pix_fmt,
-				SWS_BILINEAR, nullptr, nullptr, nullptr);
-			m_sourceWidth = frame.width;
-			m_sourceHeight = frame.height;
-		}
-
-		if (!m_scaler || av_frame_make_writable(m_frame) < 0)
+		void* imageData = nullptr;
+		if (!CheckVA(vaMapBuffer(m_display, m_image.buf, &imageData), "map image"))
 			return false;
-
-		const uint8* source[] = {frame.rgbData.data(), nullptr, nullptr, nullptr};
-		const sint32 sourceStride[] = {frame.width * 3, 0, 0, 0};
-		if (sws_scale(m_scaler, source, sourceStride, 0, frame.height,
-					  m_frame->data, m_frame->linesize) != m_height)
+		const auto* source = frame.rgbData.data();
+		auto* destination = static_cast<uint8*>(imageData);
+		uint8* yPlane = destination + m_image.offsets[0];
+		uint8* uvPlane = destination + m_image.offsets[1];
+		for (sint32 y = 0; y < m_height; ++y)
 		{
-			return false;
-		}
-
-		m_frame->pts = m_frameNumber++;
-		sint32 error = avcodec_send_frame(m_codecContext, m_frame);
-		if (error < 0)
-		{
-			LogCodecError("failed to submit frame to encoder", error);
-			return false;
-		}
-
-		while (true)
-		{
-			error = avcodec_receive_packet(m_codecContext, m_packet);
-			if (error == AVERROR(EAGAIN) || error == AVERROR_EOF)
-				return true;
-			if (error < 0)
+			const sint32 sourceY = y * frame.height / m_height;
+			for (sint32 x = 0; x < m_width; ++x)
 			{
-				LogCodecError("failed to receive encoded frame", error);
+				const sint32 i = (sourceY * frame.width + x * frame.width / m_width) * 3;
+				const sint32 r = source[i];
+				const sint32 g = source[i + 1];
+				const sint32 b = source[i + 2];
+				yPlane[y * m_image.pitches[0] + x] =
+					static_cast<uint8>((66 * r + 129 * g + 25 * b + 128) / 256 + 16);
+			}
+		}
+		for (sint32 y = 0; y < m_height / 2; ++y)
+		{
+			const sint32 sourceY = y * 2 * frame.height / m_height;
+			for (sint32 x = 0; x < m_width / 2; ++x)
+			{
+				const sint32 i =
+					(sourceY * frame.width + x * 2 * frame.width / m_width) * 3;
+				const sint32 r = source[i];
+				const sint32 g = source[i + 1];
+				const sint32 b = source[i + 2];
+				uvPlane[y * m_image.pitches[1] + x * 2] =
+					static_cast<uint8>((-38 * r - 74 * g + 112 * b + 128) / 256 + 128);
+				uvPlane[y * m_image.pitches[1] + x * 2 + 1] =
+					static_cast<uint8>((112 * r - 94 * g - 18 * b + 128) / 256 + 128);
+			}
+		}
+		vaUnmapBuffer(m_display, m_image.buf);
+
+		const VASurfaceID surface = m_surfaces[m_surfaceIndex];
+		if (!CheckVA(vaPutImage(m_display, surface, m_image.image_id,
+				0, 0, m_width, m_height, 0, 0, m_width, m_height), "upload image"))
+			return false;
+
+		const bool idr = m_frameNumber % m_fps == 0;
+		std::vector<VABufferID> buffers;
+		VABufferID buffer = VA_INVALID_ID;
+		if (idr)
+		{
+			VAEncSequenceParameterBufferH264 seq{};
+			seq.level_idc = 40;
+			seq.intra_period = m_fps;
+			seq.intra_idr_period = m_fps;
+			seq.ip_period = 1;
+			seq.bits_per_second = m_bitrateKbps * 1000;
+			seq.max_num_ref_frames = 1;
+			seq.picture_width_in_mbs = (m_width + 15) / 16;
+			seq.picture_height_in_mbs = (m_height + 15) / 16;
+			seq.seq_fields.bits.chroma_format_idc = 1;
+			seq.seq_fields.bits.frame_mbs_only_flag = 1;
+			seq.seq_fields.bits.direct_8x8_inference_flag = 1;
+			seq.seq_fields.bits.pic_order_cnt_type = 2;
+			seq.vui_parameters_present_flag = 1;
+			seq.vui_fields.bits.timing_info_present_flag = 1;
+			seq.vui_fields.bits.fixed_frame_rate_flag = 1;
+			seq.num_units_in_tick = 1;
+			seq.time_scale = m_fps * 2;
+			seq.frame_cropping_flag =
+				(seq.picture_width_in_mbs * 16 != m_width) ||
+				(seq.picture_height_in_mbs * 16 != m_height);
+			seq.frame_crop_right_offset =
+				(seq.picture_width_in_mbs * 16 - m_width) / 2;
+			seq.frame_crop_bottom_offset =
+				(seq.picture_height_in_mbs * 16 - m_height) / 2;
+			if (!CheckVA(vaCreateBuffer(m_display, m_context,
+					VAEncSequenceParameterBufferType, sizeof(seq), 1, &seq, &buffer),
+					"create sequence buffer"))
 				return false;
-			}
-
-			const sint64 pts = m_packet->pts != AV_NOPTS_VALUE ? m_packet->pts : m_frameNumber - 1;
-			if ((m_packet->flags & AV_PKT_FLAG_KEY) && m_codecContext->extradata &&
-				m_codecContext->extradata_size > 0)
-			{
-				SendH264Packet(m_codecContext->extradata,
-					static_cast<size_t>(m_codecContext->extradata_size), pts, false);
-			}
-			SendH264Packet(m_packet->data, static_cast<size_t>(m_packet->size), pts, true);
-			av_packet_unref(m_packet);
+			buffers.push_back(buffer);
 		}
+
+		VAEncPictureParameterBufferH264 picture{};
+		picture.CurrPic.picture_id = surface;
+		picture.CurrPic.frame_idx = m_frameNumber % 16;
+		picture.coded_buf = m_codedBuffers[m_codedBufferIndex];
+		picture.frame_num = m_frameNumber % 16;
+		picture.pic_init_qp = 26;
+		picture.pic_fields.bits.idr_pic_flag = idr;
+		picture.pic_fields.bits.reference_pic_flag = 1;
+		picture.pic_fields.bits.deblocking_filter_control_present_flag = 1;
+		for (auto& reference : picture.ReferenceFrames)
+			reference.picture_id = VA_INVALID_ID;
+		if (!idr && m_previousSurface != VA_INVALID_ID)
+		{
+			picture.ReferenceFrames[0].picture_id = m_previousSurface;
+			picture.ReferenceFrames[0].frame_idx = (m_frameNumber - 1) % 16;
+		}
+		if (!CheckVA(vaCreateBuffer(m_display, m_context,
+				VAEncPictureParameterBufferType, sizeof(picture), 1, &picture, &buffer),
+				"create picture buffer"))
+			return false;
+		buffers.push_back(buffer);
+
+		VAEncSliceParameterBufferH264 slice{};
+		slice.num_macroblocks =
+			((m_width + 15) / 16) * ((m_height + 15) / 16);
+		slice.macroblock_info = VA_INVALID_ID;
+		slice.slice_type = idr ? 2 : 0;
+		slice.idr_pic_id = m_frameNumber % 65536;
+		for (auto& reference : slice.RefPicList0)
+			reference.picture_id = VA_INVALID_ID;
+		if (!idr)
+			slice.RefPicList0[0] = picture.ReferenceFrames[0];
+		if (!CheckVA(vaCreateBuffer(m_display, m_context,
+				VAEncSliceParameterBufferType, sizeof(slice), 1, &slice, &buffer),
+				"create slice buffer"))
+			return false;
+		buffers.push_back(buffer);
+
+		VAStatus status = vaBeginPicture(m_display, m_context, surface);
+		if (!CheckVA(status, "begin picture") ||
+			!CheckVA(vaRenderPicture(m_display, m_context,
+				buffers.data(), buffers.size()), "render picture") ||
+			!CheckVA(vaEndPicture(m_display, m_context), "end picture") ||
+			!CheckVA(vaSyncSurface(m_display, surface), "sync surface"))
+		{
+			for (VABufferID id : buffers)
+				vaDestroyBuffer(m_display, id);
+			return false;
+		}
+
+		void* codedData = nullptr;
+		const VABufferID codedBuffer = m_codedBuffers[m_codedBufferIndex];
+		if (CheckVA(vaMapBuffer(m_display, codedBuffer, &codedData), "map coded buffer"))
+		{
+			const auto* segment = static_cast<const VACodedBufferSegment*>(codedData);
+			while (segment && segment->size)
+			{
+				SendH264Packet(static_cast<const uint8*>(segment->buf),
+					segment->size, m_frameNumber, segment->next == nullptr);
+				segment = static_cast<const VACodedBufferSegment*>(segment->next);
+			}
+			vaUnmapBuffer(m_display, codedBuffer);
+		}
+		for (VABufferID id : buffers)
+			vaDestroyBuffer(m_display, id);
+		m_previousSurface = surface;
+		m_surfaceIndex = (m_surfaceIndex + 1) % m_surfaces.size();
+		m_codedBufferIndex = (m_codedBufferIndex + 1) % m_codedBuffers.size();
+		++m_frameNumber;
+		return true;
 	}
 
 	static size_t FindStartCode(const uint8* data, size_t size, size_t& startCodeSize)
@@ -971,13 +1098,20 @@ private:
 	std::optional<CaptureFrame> m_pendingFrame;
 	bool m_stopping = false;
 
-	AVCodecContext* m_codecContext{};
-	AVFrame* m_frame{};
-	AVPacket* m_packet{};
-	SwsContext* m_scaler{};
-	sint32 m_sourceWidth{};
-	sint32 m_sourceHeight{};
-	sint64 m_frameNumber{};
+	int m_drmFd = -1;
+	VADisplay m_display{};
+	int m_majorVersion{};
+	int m_minorVersion{};
+	VAProfile m_profile{};
+	VAConfigID m_config = VA_INVALID_ID;
+	VAContextID m_context = VA_INVALID_ID;
+	std::array<VASurfaceID, 2> m_surfaces{VA_INVALID_ID, VA_INVALID_ID};
+	std::array<VABufferID, 2> m_codedBuffers{VA_INVALID_ID, VA_INVALID_ID};
+	VAImage m_image{.image_id = VA_INVALID_ID};
+	uint32 m_surfaceIndex{};
+	uint32 m_codedBufferIndex{};
+	VASurfaceID m_previousSurface = VA_INVALID_ID;
+	uint64 m_frameNumber{};
 	uint16 m_sequence{};
 	uint32 m_ssrc{};
 	SocketIPv4 m_address;

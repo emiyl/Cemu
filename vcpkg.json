@@ -31,16 +31,6 @@
     },
     "libpng",
     "opus",
-    {
-      "name": "ffmpeg",
-      "default-features": false,
-      "features": [
-        "avcodec",
-        "swscale",
-        "x264"
-      ],
-      "platform": "!windows & !osx"
-    },
     "glm",
     {
       "name": "glslang",

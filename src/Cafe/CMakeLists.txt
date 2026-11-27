@@ -662,18 +662,8 @@ target_link_libraries(CemuCafe PRIVATE
   OpenSSL::SSL
 )
 
-if (NOT WIN32 AND NOT APPLE)
-  if (ENABLE_VCPKG)
-    target_include_directories(CemuCafe PRIVATE ${FFMPEG_INCLUDE_DIRS})
-    target_link_directories(CemuCafe PRIVATE ${FFMPEG_LIBRARY_DIRS})
-    target_link_libraries(CemuCafe PRIVATE ${FFMPEG_LIBRARIES})
-  else()
-    target_link_libraries(CemuCafe PRIVATE
-      PkgConfig::AVCODEC
-      PkgConfig::AVUTIL
-      PkgConfig::SWSCALE
-    )
-  endif()
+if (UNIX AND NOT APPLE)
+  target_link_libraries(CemuCafe PRIVATE PkgConfig::LIBVA PkgConfig::LIBVA_DRM)
 endif()
 
 if (ENABLE_WAYLAND)
