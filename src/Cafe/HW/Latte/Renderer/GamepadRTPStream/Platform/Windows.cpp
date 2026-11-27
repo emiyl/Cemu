@@ -112,6 +112,8 @@ private:
 			codec->SetValue(&CODECAPI_AVEncCommonMeanBitRate, &value);
 			value.ulVal = 0;
 			codec->SetValue(&CODECAPI_AVEncMPVDefaultBPictureCount, &value);
+			value.ulVal = static_cast<ULONG>(m_fps);
+			codec->SetValue(&CODECAPI_AVEncMPVGOPSize, &value);
 		}
 		result = m_transform->SetOutputType(0, outputType.Get(), 0);
 		if (FAILED(result))
@@ -227,6 +229,17 @@ private:
 
 	bool EncodeFrame(const CaptureFrame& frame)
 	{
+		if (m_frameNumber % m_fps == 0)
+		{
+			Microsoft::WRL::ComPtr<ICodecAPI> codec;
+			if (SUCCEEDED(m_transform.As(&codec)) && codec)
+			{
+				VARIANT value{};
+				value.vt = VT_I4;
+				value.lVal = 1;
+				codec->SetValue(&CODECAPI_AVEncVideoForceKeyFrame, &value);
+			}
+		}
 		ConvertRGBToNV12(frame);
 		Microsoft::WRL::ComPtr<IMFSample> sample;
 		if (FAILED(MFCreateSample(&sample)))
@@ -380,9 +393,7 @@ private:
 	bool m_comInitialized{};
 	bool m_outputErrorLogged{};
 };
-#endif
 
-#if BOOST_OS_WINDOWS
 namespace GamepadRTPStream::Platform
 {
 static std::unique_ptr<GamepadRTPWorker> s_worker;
@@ -392,6 +403,10 @@ void SubmitFrame(std::vector<uint8>&& rgbData, sint32 width, sint32 height)
 	if (!s_worker) s_worker = std::make_unique<GamepadRTPWorker>();
 	CaptureFrame frame{std::move(rgbData), width, height};
 	s_worker->Submit(std::move(frame));
+}
+std::string GetH264SpropParameterSets()
+{
+	return {};
 }
 }
 #endif

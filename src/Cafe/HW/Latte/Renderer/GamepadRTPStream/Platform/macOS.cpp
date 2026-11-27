@@ -9,6 +9,32 @@
 #include <VideoToolbox/VideoToolbox.h>
 #include <random>
 
+namespace
+{
+std::string g_spropParameterSets;
+
+std::string Base64Encode(const uint8* data, size_t size)
+{
+	static constexpr char alphabet[] =
+		"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+	std::string output;
+	output.reserve((size + 2) / 3 * 4);
+	for (size_t index = 0; index < size; index += 3)
+	{
+		uint32_t value = static_cast<uint32_t>(data[index]) << 16;
+		if (index + 1 < size)
+			value |= static_cast<uint32_t>(data[index + 1]) << 8;
+		if (index + 2 < size)
+			value |= data[index + 2];
+		output.push_back(alphabet[(value >> 18) & 0x3F]);
+		output.push_back(alphabet[(value >> 12) & 0x3F]);
+		output.push_back(index + 1 < size ? alphabet[(value >> 6) & 0x3F] : '=');
+		output.push_back(index + 2 < size ? alphabet[value & 0x3F] : '=');
+	}
+	return output;
+}
+}
+
 class MetalVideoToolboxStream
 {
 public:
@@ -225,9 +251,23 @@ private:
 		const CMTime timestamp = CMTimeMake(submitTimestampUs, 1000000);
 		CVPixelBufferRetain(pixelBuffer);
 		std::scoped_lock lock(m_encodeMutex);
+		CFMutableDictionaryRef frameProperties = nullptr;
+		const uint64 frameIndex = m_encodedFrameIndex++;
+		if (frameIndex % m_fps == 0)
+		{
+			frameProperties = CFDictionaryCreateMutable(
+				kCFAllocatorDefault, 1,
+				&kCFTypeDictionaryKeyCallBacks,
+				&kCFTypeDictionaryValueCallBacks);
+			CFDictionarySetValue(frameProperties,
+				kVTEncodeFrameOptionKey_ForceKeyFrame,
+				kCFBooleanTrue);
+		}
 		const OSStatus result = VTCompressionSessionEncodeFrame(
 			m_session, pixelBuffer, timestamp, kCMTimeInvalid,
-			nullptr, pixelBuffer, nullptr);
+			frameProperties, pixelBuffer, nullptr);
+		if (frameProperties)
+			CFRelease(frameProperties);
 		if (result != noErr)
 			CVPixelBufferRelease(pixelBuffer);
 	}
@@ -413,6 +453,7 @@ private:
 			size_t parameterSetCount = 0;
 			CMVideoFormatDescriptionGetH264ParameterSetAtIndex(
 				format, 0, nullptr, nullptr, &parameterSetCount, nullptr);
+			std::vector<std::string> parameterSets;
 			for (size_t index = 0; index < parameterSetCount; ++index)
 			{
 				const uint8* parameterSet = nullptr;
@@ -421,7 +462,12 @@ private:
 					format, index, &parameterSet, &parameterSetSize,
 					nullptr, nullptr);
 				SendNal(parameterSet, parameterSetSize, timestampUs, false);
+				parameterSets.emplace_back(Base64Encode(parameterSet, parameterSetSize));
 			}
+			if (!parameterSets.empty())
+				g_spropParameterSets = parameterSets.size() == 1
+					? parameterSets[0]
+					: parameterSets[0] + "," + parameterSets[1];
 		}
 
 		size_t length = 0;
@@ -505,6 +551,7 @@ private:
 	std::mutex m_encodeMutex;
 	std::atomic<uint64> m_lastMetalCompletionUs{};
 	std::atomic<uint64> m_encodedFrames{};
+	uint64 m_encodedFrameIndex{};
 
 	VTCompressionSessionRef m_session{};
 	MTL::Device* m_device{};
@@ -513,9 +560,7 @@ private:
 	MTL::ComputePipelineState* m_computePipeline{};
 	bool m_encodeErrorLogged{};
 };
-#endif
 
-#if BOOST_OS_MACOS
 namespace GamepadRTPStream::Platform
 {
 static std::unique_ptr<MetalVideoToolboxStream> s_worker;
@@ -531,6 +576,10 @@ void SubmitMetalFrame(MetalRenderer* renderer, MTL::Texture* texture)
 	if (!renderer || !texture) return;
 	if (!s_worker) s_worker = std::make_unique<MetalVideoToolboxStream>();
 	s_worker->Submit(renderer, texture);
+}
+std::string GetH264SpropParameterSets()
+{
+	return g_spropParameterSets;
 }
 }
 #endif

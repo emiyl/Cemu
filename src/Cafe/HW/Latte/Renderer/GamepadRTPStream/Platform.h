@@ -29,6 +29,7 @@ struct CaptureFrame
 namespace GamepadRTPStream::Platform
 {
 bool LinuxNVIDIAAvailable();
+std::string GetH264SpropParameterSets();
 void Shutdown();
 void SubmitFrame(std::vector<uint8>&& rgbData, sint32 width, sint32 height);
 #if BOOST_OS_MACOS

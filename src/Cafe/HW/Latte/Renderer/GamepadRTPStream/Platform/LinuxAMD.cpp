@@ -814,9 +814,7 @@ private:
 	tcuCtxCreate_v2* m_cuCtxCreate{};
 	tcuCtxDestroy_v2* m_cuCtxDestroy{};
 };
-#endif
 
-#if BOOST_OS_LINUX
 namespace GamepadRTPStream::Platform
 {
 static std::unique_ptr<GamepadRTPWorker> s_worker;
@@ -826,6 +824,10 @@ void SubmitFrame(std::vector<uint8>&& rgbData, sint32 width, sint32 height)
 	if (!s_worker) s_worker = std::make_unique<GamepadRTPWorker>();
 	CaptureFrame frame{std::move(rgbData), width, height};
 	s_worker->Submit(std::move(frame));
+}
+std::string GetH264SpropParameterSets()
+{
+	return {};
 }
 }
 #endif

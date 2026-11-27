@@ -55,6 +55,7 @@
 
 #include "Cafe/CafeSystem.h"
 #include "Cafe/HW/Latte/Renderer/GamepadRTPStream.h"
+#include "Cafe/HW/Latte/Renderer/GamepadRTPStream/Platform.h"
 #include "Cemu/ncrypto/ncrypto.h"
 #include "Cafe/TitleList/TitleList.h"
 #include "wxHelper.h"
@@ -2551,6 +2552,14 @@ void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
 	if (dialog.ShowModal() != wxID_OK)
 		return;
 
+	const std::string sprop = GamepadRTPStream::Platform::GetH264SpropParameterSets();
+	const bool hasSpsAndPps =
+		sprop.find(',') != std::string::npos &&
+		sprop.size() > sprop.find(',') + 1;
+	const std::string fmtpParameters =
+		hasSpsAndPps
+			? fmt::format("packetization-mode=1;sprop-parameter-sets={}", sprop)
+			: "packetization-mode=1";
 	const std::string sdp = fmt::format(
 		"v=0\r\n"
 		"o=- 0 0 IN IP4 127.0.0.1\r\n"
@@ -2559,10 +2568,10 @@ void GeneralSettings2::OnSaveRTPDescription(wxCommandEvent&)
 		"t=0 0\r\n"
 		"m=video {} RTP/AVP 96\r\n"
 		"a=rtpmap:96 H264/90000\r\n"
-		"a=fmtp:96 packetization-mode=1\r\n"
+		"a=fmtp:96 {}\r\n"
 		"a=framerate:{}\r\n"
 		"a=recvonly\r\n",
-		address, port, fps);
+		address, port, fmtpParameters, fps);
 	const std::string audioSdp = fmt::format(
 		"m=audio {} RTP/AVP 97\r\n"
 		"a=rtpmap:97 opus/48000/2\r\n"
