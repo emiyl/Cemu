@@ -1,5 +1,6 @@
 #if BOOST_OS_LINUX
 #include "Cafe/HW/Latte/Renderer/GamepadRTPStream/Platform.h"
+#include "util/helpers/helpers.h"
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <va/va.h>

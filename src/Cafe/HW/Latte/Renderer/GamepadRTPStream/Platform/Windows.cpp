@@ -1,6 +1,6 @@
 #if BOOST_OS_WINDOWS
 #include "Cafe/HW/Latte/Renderer/GamepadRTPStream/Platform.h"
-#define WIN32_LEAN_AND_MEAN
+#include "util/helpers/helpers.h"
 #include <codecapi.h>
 #include <mfapi.h>
 #include <mferror.h>
