@@ -663,7 +663,8 @@ target_link_libraries(CemuCafe PRIVATE
 )
 
 if (UNIX AND NOT APPLE)
-  target_link_libraries(CemuCafe PRIVATE PkgConfig::LIBVA PkgConfig::LIBVA_DRM)
+  target_include_directories(CemuCafe PRIVATE "${CMAKE_SOURCE_DIR}/dependencies/nv-codec-headers")
+  target_link_libraries(CemuCafe PRIVATE PkgConfig::LIBVA PkgConfig::LIBVA_DRM ${CMAKE_DL_LIBS})
 endif()
 
 if (ENABLE_WAYLAND)

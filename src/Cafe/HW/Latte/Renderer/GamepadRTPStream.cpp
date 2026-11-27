@@ -31,9 +31,12 @@
 #if BOOST_OS_LINUX
 #include <fcntl.h>
 #include <linux/fb.h>
+#include <dlfcn.h>
 #include <va/va.h>
 #include <va/va_drm.h>
 #include <va/va_enc_h264.h>
+#include <dynlink_cuda.h>
+#include <nvEncodeAPI.h>
 #include <unistd.h>
 #endif
 
@@ -619,6 +622,123 @@ private:
 
 	bool InitializeEncoder()
 	{
+		if (InitializeNVENC())
+		{
+			m_nvenc = true;
+			return true;
+		}
+		ReleaseNVENC();
+		return InitializeVAAPI();
+	}
+
+	bool InitializeNVENC()
+	{
+		m_cudaLibrary = dlopen("libcuda.so.1", RTLD_NOW | RTLD_LOCAL);
+		m_nvencLibrary = dlopen("libnvidia-encode.so.1", RTLD_NOW | RTLD_LOCAL);
+		if (!m_cudaLibrary || !m_nvencLibrary)
+			return false;
+
+		auto Load = [](void* library, const char* name) {
+			return dlsym(library, name);
+		};
+		m_cuInit = reinterpret_cast<tcuInit*>(Load(m_cudaLibrary, "cuInit"));
+		m_cuDeviceGet = reinterpret_cast<tcuDeviceGet*>(
+			Load(m_cudaLibrary, "cuDeviceGet"));
+		m_cuCtxCreate = reinterpret_cast<tcuCtxCreate_v2*>(
+			Load(m_cudaLibrary, "cuCtxCreate_v2"));
+		m_cuCtxDestroy = reinterpret_cast<tcuCtxDestroy_v2*>(
+			Load(m_cudaLibrary, "cuCtxDestroy_v2"));
+		auto createInstance = reinterpret_cast<NVENCSTATUS (*)(NV_ENCODE_API_FUNCTION_LIST*)>(
+			Load(m_nvencLibrary, "NvEncodeAPICreateInstance"));
+		if (!m_cuInit || !m_cuDeviceGet || !m_cuCtxCreate || !m_cuCtxDestroy ||
+			!createInstance || m_cuInit(0) != CUDA_SUCCESS)
+			return false;
+
+		CUdevice device = 0;
+		if (m_cuDeviceGet(&device, 0) != CUDA_SUCCESS ||
+			m_cuCtxCreate(&m_cudaContext, 0, device) != CUDA_SUCCESS)
+			return false;
+
+		m_nvencFunctions = {};
+		m_nvencFunctions.version = NV_ENCODE_API_FUNCTION_LIST_VER;
+		if (createInstance(&m_nvencFunctions) != NV_ENC_SUCCESS)
+			return false;
+
+		NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS session{};
+		session.version = NV_ENC_OPEN_ENCODE_SESSION_EX_PARAMS_VER;
+		session.device = m_cudaContext;
+		session.deviceType = NV_ENC_DEVICE_TYPE_CUDA;
+		session.apiVersion = NVENCAPI_VERSION;
+		if (m_nvencFunctions.nvEncOpenEncodeSessionEx(
+				&session, &m_nvencEncoder) != NV_ENC_SUCCESS)
+			return false;
+
+		NV_ENC_PRESET_CONFIG preset{};
+		preset.version = NV_ENC_PRESET_CONFIG_VER;
+		preset.presetCfg.version = NV_ENC_CONFIG_VER;
+		if (m_nvencFunctions.nvEncGetEncodePresetConfigEx(m_nvencEncoder,
+				NV_ENC_CODEC_H264_GUID, NV_ENC_PRESET_P1_GUID,
+				NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY, &preset) != NV_ENC_SUCCESS)
+			return false;
+
+		NV_ENC_CONFIG config = preset.presetCfg;
+		config.profileGUID = NV_ENC_H264_PROFILE_BASELINE_GUID;
+		config.gopLength = m_fps;
+		config.frameIntervalP = 1;
+		config.rcParams.rateControlMode = NV_ENC_PARAMS_RC_CBR;
+		config.rcParams.averageBitRate = m_bitrateKbps * 1000;
+		config.rcParams.maxBitRate = m_bitrateKbps * 1000;
+		config.rcParams.vbvBufferSize =
+			config.rcParams.averageBitRate / m_fps;
+		config.rcParams.vbvInitialDelay = config.rcParams.vbvBufferSize;
+		config.rcParams.enableAQ = 1;
+		config.encodeCodecConfig.h264Config.idrPeriod = m_fps;
+		config.encodeCodecConfig.h264Config.disableSPSPPS = 0;
+		config.encodeCodecConfig.h264Config.repeatSPSPPS = 1;
+		config.encodeCodecConfig.h264Config.outputBufferingPeriodSEI = 0;
+		config.encodeCodecConfig.h264Config.outputPictureTimingSEI = 0;
+
+		NV_ENC_INITIALIZE_PARAMS init{};
+		init.version = NV_ENC_INITIALIZE_PARAMS_VER;
+		init.encodeGUID = NV_ENC_CODEC_H264_GUID;
+		init.presetGUID = NV_ENC_PRESET_P1_GUID;
+		init.encodeWidth = m_width;
+		init.encodeHeight = m_height;
+		init.darWidth = m_width;
+		init.darHeight = m_height;
+		init.frameRateNum = m_fps;
+		init.frameRateDen = 1;
+		init.enablePTD = 1;
+		init.encodeConfig = &config;
+		init.tuningInfo = NV_ENC_TUNING_INFO_ULTRA_LOW_LATENCY;
+		if (m_nvencFunctions.nvEncInitializeEncoder(
+				m_nvencEncoder, &init) != NV_ENC_SUCCESS)
+			return false;
+
+		NV_ENC_CREATE_INPUT_BUFFER input{};
+		input.version = NV_ENC_CREATE_INPUT_BUFFER_VER;
+		input.width = m_width;
+		input.height = m_height;
+		input.bufferFmt = NV_ENC_BUFFER_FORMAT_NV12;
+		if (m_nvencFunctions.nvEncCreateInputBuffer(
+				m_nvencEncoder, &input) != NV_ENC_SUCCESS)
+			return false;
+		m_nvencInput = input.inputBuffer;
+
+		NV_ENC_CREATE_BITSTREAM_BUFFER output{};
+		output.version = NV_ENC_CREATE_BITSTREAM_BUFFER_VER;
+		if (m_nvencFunctions.nvEncCreateBitstreamBuffer(
+				m_nvencEncoder, &output) != NV_ENC_SUCCESS)
+			return false;
+		m_nvencOutput = output.bitstreamBuffer;
+		cemuLog_log(LogType::Force,
+			"RTP: streaming gamepad screen at {}x{}, {} fps to {}:{} using NVENC",
+			m_width, m_height, m_fps, GetConfig().rtp_address.GetValue(), m_port);
+		return true;
+	}
+
+	bool InitializeVAAPI()
+	{
 		const char* renderNodes[] = {
 			"/dev/dri/renderD128",
 			"/dev/dri/renderD129",
@@ -726,10 +846,17 @@ private:
 			"RTP: streaming gamepad screen at {}x{}, {} fps to {}:{} using VA-API {}.{}",
 			m_width, m_height, m_fps, GetConfig().rtp_address.GetValue(), m_port,
 			m_majorVersion, m_minorVersion);
+		m_vaapi = true;
 		return true;
 	}
 
 	void ReleaseEncoder()
+	{
+		ReleaseVAAPI();
+		ReleaseNVENC();
+	}
+
+	void ReleaseVAAPI()
 	{
 		for (VABufferID buffer : m_codedBuffers)
 			if (buffer != VA_INVALID_ID)
@@ -747,6 +874,31 @@ private:
 			vaTerminate(m_display);
 		if (m_drmFd >= 0)
 			close(m_drmFd);
+		m_display = nullptr;
+		m_drmFd = -1;
+	}
+
+	void ReleaseNVENC()
+	{
+		if (m_nvencEncoder)
+		{
+			if (m_nvencOutput)
+				m_nvencFunctions.nvEncDestroyBitstreamBuffer(
+					m_nvencEncoder, m_nvencOutput);
+			if (m_nvencInput)
+				m_nvencFunctions.nvEncDestroyInputBuffer(
+					m_nvencEncoder, m_nvencInput);
+			m_nvencFunctions.nvEncDestroyEncoder(m_nvencEncoder);
+		}
+		m_nvencOutput = m_nvencInput = m_nvencEncoder = nullptr;
+		if (m_cudaContext && m_cuCtxDestroy)
+			m_cuCtxDestroy(m_cudaContext);
+		m_cudaContext = nullptr;
+		if (m_nvencLibrary)
+			dlclose(m_nvencLibrary);
+		if (m_cudaLibrary)
+			dlclose(m_cudaLibrary);
+		m_nvencLibrary = m_cudaLibrary = nullptr;
 	}
 
 	static bool CheckVA(VAStatus status, std::string_view operation)
@@ -759,6 +911,90 @@ private:
 	}
 
 	bool EncodeFrame(const CaptureFrame& frame)
+	{
+		if (m_nvenc)
+			return EncodeNVENC(frame);
+		return EncodeVAAPI(frame);
+	}
+
+	bool EncodeNVENC(const CaptureFrame& frame)
+	{
+		NV_ENC_LOCK_INPUT_BUFFER lock{};
+		lock.version = NV_ENC_LOCK_INPUT_BUFFER_VER;
+		lock.inputBuffer = m_nvencInput;
+		if (m_nvencFunctions.nvEncLockInputBuffer(
+				m_nvencEncoder, &lock) != NV_ENC_SUCCESS)
+			return false;
+
+		auto* destination = static_cast<uint8*>(lock.bufferDataPtr);
+		const auto* source = frame.rgbData.data();
+		for (sint32 y = 0; y < m_height; ++y)
+		{
+			const sint32 sy = y * frame.height / m_height;
+			for (sint32 x = 0; x < m_width; ++x)
+			{
+				const sint32 i = (sy * frame.width + x * frame.width / m_width) * 3;
+				const sint32 r = source[i];
+				const sint32 g = source[i + 1];
+				const sint32 b = source[i + 2];
+				destination[y * lock.pitch + x] = static_cast<uint8>(
+					(66 * r + 129 * g + 25 * b + 128) / 256 + 16);
+			}
+		}
+		uint8* uv = destination + lock.pitch * m_height;
+		for (sint32 y = 0; y < m_height / 2; ++y)
+		{
+			const sint32 sy = y * 2 * frame.height / m_height;
+			for (sint32 x = 0; x < m_width / 2; ++x)
+			{
+				const sint32 i =
+					(sy * frame.width + x * 2 * frame.width / m_width) * 3;
+				const sint32 r = source[i];
+				const sint32 g = source[i + 1];
+				const sint32 b = source[i + 2];
+				uv[y * lock.pitch + x * 2] = static_cast<uint8>(
+					(-38 * r - 74 * g + 112 * b + 128) / 256 + 128);
+				uv[y * lock.pitch + x * 2 + 1] = static_cast<uint8>(
+					(112 * r - 94 * g - 18 * b + 128) / 256 + 128);
+			}
+		}
+		m_nvencFunctions.nvEncUnlockInputBuffer(m_nvencEncoder, m_nvencInput);
+
+		NV_ENC_PIC_PARAMS picture{};
+		picture.version = NV_ENC_PIC_PARAMS_VER;
+		picture.inputWidth = m_width;
+		picture.inputHeight = m_height;
+		picture.inputPitch = lock.pitch;
+		picture.inputBuffer = m_nvencInput;
+		picture.outputBitstream = m_nvencOutput;
+		picture.bufferFmt = NV_ENC_BUFFER_FORMAT_NV12;
+		picture.pictureStruct = NV_ENC_PIC_STRUCT_FRAME;
+		picture.pictureType = NV_ENC_PIC_TYPE_UNKNOWN;
+		picture.frameIdx = static_cast<uint32>(m_frameNumber);
+		picture.inputTimeStamp = m_frameNumber * 1000000 / m_fps;
+		picture.inputDuration = 1000000 / m_fps;
+		if (m_frameNumber % m_fps == 0)
+			picture.encodePicFlags |= NV_ENC_PIC_FLAG_FORCEIDR;
+		if (m_nvencFunctions.nvEncEncodePicture(
+				m_nvencEncoder, &picture) != NV_ENC_SUCCESS)
+			return false;
+
+		NV_ENC_LOCK_BITSTREAM output{};
+		output.version = NV_ENC_LOCK_BITSTREAM_VER;
+		output.outputBitstream = m_nvencOutput;
+		if (m_nvencFunctions.nvEncLockBitstream(
+				m_nvencEncoder, &output) != NV_ENC_SUCCESS)
+			return false;
+		SendH264Packet(static_cast<const uint8*>(output.bitstreamBufferPtr),
+			output.bitstreamSizeInBytes,
+			static_cast<sint64>(output.outputTimeStamp), true);
+		m_nvencFunctions.nvEncUnlockBitstream(
+			m_nvencEncoder, m_nvencOutput);
+		++m_frameNumber;
+		return true;
+	}
+
+	bool EncodeVAAPI(const CaptureFrame& frame)
 	{
 		void* imageData = nullptr;
 		if (!CheckVA(vaMapBuffer(m_display, m_image.buf, &imageData), "map image"))
@@ -1121,6 +1357,19 @@ private:
 	sint32 m_fps;
 	sint32 m_bitrateKbps;
 	bool m_sendErrorLogged{};
+	bool m_nvenc{};
+	bool m_vaapi{};
+	void* m_cudaLibrary{};
+	void* m_nvencLibrary{};
+	void* m_nvencEncoder{};
+	void* m_nvencInput{};
+	void* m_nvencOutput{};
+	CUcontext m_cudaContext{};
+	NV_ENCODE_API_FUNCTION_LIST m_nvencFunctions{};
+	tcuInit* m_cuInit{};
+	tcuDeviceGet* m_cuDeviceGet{};
+	tcuCtxCreate_v2* m_cuCtxCreate{};
+	tcuCtxDestroy_v2* m_cuCtxDestroy{};
 };
 #endif
 
